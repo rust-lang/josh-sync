@@ -1,7 +1,8 @@
 use anyhow::Context;
 use clap::Parser;
-use josh_sync::JoshConfig;
+use josh_sync::config::{JoshConfig, load_config};
 use josh_sync::josh::{JoshProxy, try_install_josh};
+use josh_sync::sync::{GitSync, RustcPullError};
 use std::path::{Path, PathBuf};
 
 const DEFAULT_CONFIG_PATH: &str = "josh-sync.toml";
@@ -31,16 +32,31 @@ fn main() -> anyhow::Result<()> {
             let config = JoshConfig {
                 org: "rust-lang".to_string(),
                 repo: "<repository-name>".to_string(),
-                upstream_sha: None,
+                path: "<relative-subtree-path>".to_string(),
+                last_upstream_sha: None,
             };
-            let config = toml::to_string_pretty(&config).context("cannot serialize config")?;
-            std::fs::write(DEFAULT_CONFIG_PATH, config).context("cannot write config")?;
+            config
+                .write(Path::new(DEFAULT_CONFIG_PATH))
+                .context("cannot write config")?;
             println!("Created config file at {DEFAULT_CONFIG_PATH}");
         }
         Command::Pull { config } => {
             let config = load_config(&config)
                 .context("cannot load config. Run the `init` command to initialize it.")?;
             let josh = get_josh_proxy()?;
+            let sync = GitSync::new(config, josh);
+            if let Err(error) = sync.rustc_pull() {
+                match error {
+                    RustcPullError::NothingToPull => {
+                        eprintln!("Nothing to pull");
+                        std::process::exit(2);
+                    }
+                    RustcPullError::PullFailed(error) => {
+                        eprintln!("Pull failure: {error:?}");
+                        std::process::exit(1);
+                    }
+                }
+            }
         }
     }
 
@@ -64,11 +80,4 @@ fn get_josh_proxy() -> anyhow::Result<JoshProxy> {
             }
         }
     }
-}
-
-fn load_config(path: &Path) -> anyhow::Result<JoshConfig> {
-    let data = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot load config file from {}", path.display()))?;
-    let config: JoshConfig = toml::from_str(&data).context("cannot load config as TOML")?;
-    Ok(config)
 }

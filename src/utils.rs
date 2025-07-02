@@ -1,16 +1,12 @@
 use std::process::{Command, Stdio};
 
 /// Run a command from an array, collecting its output.
-pub fn check_output<'a, Args: AsRef<[&'a str]>>(l: Args) -> String {
-    let l = l.as_ref();
-    check_output_cfg(l[0], |c| c.args(&l[1..]))
-}
+pub fn check_output<'a, Args: AsRef<[&'a str]>>(l: Args) -> anyhow::Result<String> {
+    let args = l.as_ref();
 
-/// [`read`] with configuration. All shell helpers print the command and pass stderr.
-fn check_output_cfg(prog: &str, f: impl FnOnce(&mut Command) -> &mut Command) -> String {
-    let mut cmd = Command::new(prog);
+    let mut cmd = Command::new(args[0]);
+    cmd.args(&args[1..]);
     cmd.stderr(Stdio::inherit());
-    f(&mut cmd);
     eprintln!("+ {cmd:?}");
     let out = cmd.output().expect("command failed");
     let stdout = String::from_utf8_lossy(out.stdout.trim_ascii()).to_string();
@@ -20,5 +16,12 @@ fn check_output_cfg(prog: &str, f: impl FnOnce(&mut Command) -> &mut Command) ->
             out.status.code()
         );
     }
-    stdout
+    Ok(stdout)
+}
+
+/// Fail if there are files that need to be checked in.
+pub fn ensure_clean_git_state() {
+    let read = check_output(["git", "status", "--untracked-files=no", "--porcelain"])
+        .expect("cannot figure out if git state is clean");
+    assert!(read.is_empty(), "working directory must be clean");
 }

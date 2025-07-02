@@ -3,9 +3,14 @@ name = "josh-sync"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+path = "src/bin/josh_sync.rs"
+name = "josh-sync"
+
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+directories = "6"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
 which = "8"
