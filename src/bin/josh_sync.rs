@@ -1,19 +1,19 @@
 use anyhow::Context;
 use clap::Parser;
-use rustc_josh_sync::JoshConfig;
+use josh_sync::JoshConfig;
 
 const DEFAULT_CONFIG_PATH: &str = "josh-sync.toml";
 
 #[derive(clap::Parser)]
 struct Args {
     #[clap(subcommand)]
-    cmd: Command
+    cmd: Command,
 }
 
 #[derive(clap::Parser)]
 enum Command {
     /// Initialize a config file for this repository.
-    Init
+    Init,
 }
 
 fn main() -> anyhow::Result<()> {

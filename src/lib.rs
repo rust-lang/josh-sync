@@ -1,3 +1,6 @@
+pub mod josh;
+mod utils;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct JoshConfig {
     #[serde(default = "default_org")]
@@ -5,7 +8,7 @@ pub struct JoshConfig {
     pub repo: String,
     /// Last SHA of rust-lang/rust that was pulled into this subtree.
     #[serde(default)]
-    pub upstream_sha: Option<String>
+    pub upstream_sha: Option<String>,
 }
 
 fn default_org() -> String {
