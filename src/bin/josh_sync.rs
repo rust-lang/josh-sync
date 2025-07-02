@@ -50,7 +50,8 @@ fn main() -> anyhow::Result<()> {
             let config = JoshConfig {
                 org: "rust-lang".to_string(),
                 repo: "<repository-name>".to_string(),
-                path: "<relative-subtree-path>".to_string(),
+                path: Some("<relative-subtree-path>".to_string()),
+                filter: None,
             };
             config
                 .write(Path::new(DEFAULT_CONFIG_PATH))

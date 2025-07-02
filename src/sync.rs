@@ -19,11 +19,6 @@ impl From<anyhow::Error> for RustcPullError {
     }
 }
 
-/// Constructs a Josh filter for synchronization, like `:/src/foo`.
-fn construct_filter(path: &str) -> String {
-    format!(":/{path}")
-}
-
 pub struct PullResult {
     pub merge_commit_message: String,
 }
@@ -64,7 +59,7 @@ impl GitSync {
         let josh_url = josh.git_url(
             UPSTREAM_REPO,
             Some(&upstream_sha),
-            &construct_filter(&self.context.config.path),
+            &self.context.config.construct_josh_filter(),
         );
 
         let orig_head = check_output(["git", "rev-parse", "HEAD"])?;
@@ -150,7 +145,7 @@ Upstream ref: {upstream_sha}
 Filtered ref: {incoming_ref}
             "#,
             upstream_head_short = &upstream_sha[..12],
-            filter = construct_filter(&self.context.config.path)
+            filter = self.context.config.construct_josh_filter()
         );
 
         // Merge the fetched commit.
@@ -203,7 +198,7 @@ Filtered ref: {incoming_ref}
         let josh_url = josh.git_url(
             &format!("{username}/rust"),
             None,
-            &construct_filter(&self.context.config.path),
+            &self.context.config.construct_josh_filter(),
         );
         let user_upstream_url = format!("https://github.com/{username}/rust");
 

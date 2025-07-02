@@ -8,12 +8,23 @@ pub struct JoshConfig {
     pub repo: String,
     /// Relative path where the subtree is located in rust-lang/rust.
     /// For example `src/doc/rustc-dev-guide`.
-    pub path: String,
+    pub path: Option<String>,
+    /// Optional filter specification for Josh.
+    /// It cannot be used together with `path`.
+    pub filter: Option<String>,
 }
 
 impl JoshConfig {
     pub fn full_repo_name(&self) -> String {
         format!("{}/{}", self.org, self.repo)
+    }
+
+    pub fn construct_josh_filter(&self) -> String {
+        match (&self.path, &self.filter) {
+            (Some(path), None) => format!(":/{path}"),
+            (None, Some(filter)) => filter.clone(),
+            _ => unreachable!("Config contains both path and a filter"),
+        }
     }
 
     pub fn write(&self, path: &Path) -> anyhow::Result<()> {
@@ -31,5 +42,13 @@ pub fn load_config(path: &Path) -> anyhow::Result<JoshConfig> {
     let data = std::fs::read_to_string(path)
         .with_context(|| format!("cannot load config file from {}", path.display()))?;
     let config: JoshConfig = toml::from_str(&data).context("cannot load config as TOML")?;
+    if config.path.is_some() == config.filter.is_some() {
+        return if config.path.is_some() {
+            Err(anyhow::anyhow!("Cannot specify both `path` and `filter`"))
+        } else {
+            Err(anyhow::anyhow!("Must specify one of `path` and `filter`"))
+        };
+    }
+
     Ok(config)
 }

@@ -13,6 +13,8 @@ $ cargo install --locked --git https://github.com/rust-lang/josh-sync
 
 First, create a configuration file for a given subtree repo using `josh-sync init`. The config will be created under the path `josh-sync.toml`. Modify the file to fill in the name of the subtree repository (e.g. `stdarch`) and its relative path in the main `rust-lang/rust` repository (e.g. `library/stdarch`).
 
+If you need to specify a more complex Josh `filter`, use `filter` field in the configuration file instead of the `path` field.
+
 The `init` command will also create an empty `rust-version` file that stores the last upstream `rustc` SHA that was synced in the subtree.
 
 ## Performing pull
