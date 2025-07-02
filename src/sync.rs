@@ -118,7 +118,7 @@ To prepare for merging from {UPSTREAM_REPO}."#,
         .context("cannot create preparation commit")?;
 
         // Make sure that we reset the above commit if something fails
-        let mut git_reset = GitResetOnDrop::default();
+        let mut git_reset = GitResetOnDrop::new(orig_head);
 
         // Fetch given rustc commit.
         check_output(&["git", "fetch", &josh_url])
@@ -311,13 +311,20 @@ fn prepare_rustc_checkout() -> anyhow::Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
-/// Removes the last commit on drop, unless `disarm` is called first.
-#[derive(Default)]
+/// Restores HEAD to `reset_to` on drop, unless `disarm` is called first.
 struct GitResetOnDrop {
     disarmed: bool,
+    reset_to: String,
 }
 
 impl GitResetOnDrop {
+    fn new(current_sha: String) -> Self {
+        Self {
+            disarmed: false,
+            reset_to: current_sha,
+        }
+    }
+
     fn disarm(&mut self) {
         self.disarmed = true;
     }
@@ -326,9 +333,9 @@ impl GitResetOnDrop {
 impl Drop for GitResetOnDrop {
     fn drop(&mut self) {
         if !self.disarmed {
-            eprintln!("Reverting last commit");
-            check_output(&["git", "reset", "--hard", "HEAD^"])
-                .expect("cannot reset last git commit");
+            eprintln!("Reverting HEAD to {}", self.reset_to);
+            check_output(&["git", "reset", "--hard", &self.reset_to])
+                .expect(&format!("cannot reset current branch to {}", self.reset_to));
         }
     }
 }
