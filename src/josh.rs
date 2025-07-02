@@ -12,7 +12,7 @@ impl JoshProxy {
     }
 }
 
-fn install_josh() -> Option<JoshProxy> {
+pub fn try_install_josh() -> Option<JoshProxy> {
     check_output(&[
         "cargo",
         "install",
@@ -21,6 +21,7 @@ fn install_josh() -> Option<JoshProxy> {
         "https://github.com/josh-project/josh",
         "--tag",
         "r24.10.04",
+        "josh-proxy",
     ]);
     JoshProxy::lookup()
 }
