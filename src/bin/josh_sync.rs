@@ -70,11 +70,16 @@ fn main() -> anyhow::Result<()> {
             let sync = GitSync::new(ctx.clone(), josh);
             match sync.rustc_pull() {
                 Ok(result) => {
-                    maybe_create_gh_pr(
+                    if !maybe_create_gh_pr(
                         &ctx.config.full_repo_name(),
                         "Rustc pull update",
                         &result.merge_commit_message,
-                    )?;
+                    )? {
+                        println!(
+                            "Now push the current branch to {} (either a fork or the main repo) and create a PR",
+                            ctx.config.repo
+                        );
+                    }
                 }
                 Err(RustcPullError::NothingToPull) => {
                     eprintln!("Nothing to pull");
@@ -125,13 +130,9 @@ fn load_context(config_path: &Path, rust_version_path: &Path) -> anyhow::Result<
 }
 
 fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Result<bool> {
-    let gh_available = which::which("gh").is_ok();
-    if !gh_available {
-        println!(
-            "Note: if you install the `gh` CLI tool, josh-sync will be able to create the sync PR for you."
-        );
-        Ok(false)
-    } else if prompt("Do you want to create a rustc pull PR using the `gh` tool?") {
+    if which::which("gh").is_ok()
+        && prompt("Do you want to create a rustc pull PR using the `gh` tool?")
+    {
         std::process::Command::new("gh")
             .args(&[
                 "pr",
