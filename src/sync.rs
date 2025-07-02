@@ -1,6 +1,8 @@
 use crate::SyncContext;
 use crate::josh::JoshProxy;
-use crate::utils::{StderrMode, ensure_clean_git_state, run_command, run_command_at};
+use crate::utils::{
+    StderrMode, ensure_clean_git_state, replace_references, run_command, run_command_at,
+};
 use anyhow::{Context, Error};
 use std::path::{Path, PathBuf};
 
@@ -91,9 +93,23 @@ impl GitSync {
             )
         })?;
 
+        // Fetch the latest upstream HEAD so we can get a summary. Use the Josh URL for caching.
+        run_command([
+            "git",
+            "fetch",
+            &josh.git_url(UPSTREAM_REPO, Some(&upstream_sha), ":/"),
+            &upstream_sha,
+            "--depth=1",
+        ])?;
+        let summary = run_command(["git", "log", "-1", "--format=%h %s", "FETCH_HEAD"])?;
+        let summary = replace_references(&summary, UPSTREAM_REPO);
+
         let prep_message = format!(
-            r#"Update the upstream Rust SHA to {upstream_sha}.
-To prepare for merging from {UPSTREAM_REPO}."#,
+            r#"Update the upstream Rust version to `{upstream_sha}`.
+
+To prepare for merging from {UPSTREAM_REPO}, the rust-version file was set to the following commit:
+
+{summary}"#,
         );
 
         let config_path = self
