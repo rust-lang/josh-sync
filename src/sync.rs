@@ -72,9 +72,12 @@ impl GitSync {
             "previous upstream base: {:?}",
             self.config.config.last_upstream_sha
         );
-        println!("current upstream base: {upstream_sha}");
+        println!("new upstream base: {upstream_sha}");
         println!("original local HEAD: {orig_head}");
 
+        /// If the upstream SHA hasn't changed from the latest sync, there is nothing to pull
+        /// We distinguish this situation for tools that might not want to consider this to
+        /// be an error.
         if let Some(previous_base_commit) = self.config.config.last_upstream_sha.as_ref() {
             if *previous_base_commit == upstream_sha {
                 return Err(RustcPullError::NothingToPull);
@@ -91,8 +94,8 @@ impl GitSync {
         config.write(&self.config.path)?;
 
         let prep_message = format!(
-            r#"Update the upstream Rust SHA to {upstream_sha}
-To prepare for merging from {UPSTREAM_REPO}"#,
+            r#"Update the upstream Rust SHA to {upstream_sha}.
+To prepare for merging from {UPSTREAM_REPO}."#,
         );
 
         let config_path = self.config.path.to_string_lossy().to_string();
@@ -166,7 +169,7 @@ Filtered ref: {incoming_ref}
 
         git_reset.disarm();
 
-        // Check that the number of roots did not increase.
+        // Check that the number of roots did not change.
         if num_roots()? != num_roots_before {
             return Err(anyhow::anyhow!(
                 "Josh created a new root commit. This is probably not the history you want."
