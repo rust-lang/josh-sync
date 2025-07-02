@@ -82,9 +82,10 @@ pub struct RunningJoshProxy {
 }
 
 impl RunningJoshProxy {
-    pub fn git_url(&self, upstream_repo: &str, commit: &str, filter: &str) -> String {
+    pub fn git_url(&self, repo: &str, commit: Option<&str>, filter: &str) -> String {
+        let commit = commit.map(|c| format!("@{c}")).unwrap_or_default();
         format!(
-            "http://localhost:{}/{upstream_repo}.git@{commit}{filter}.git",
+            "http://localhost:{}/{repo}.git{commit}{filter}.git",
             self.port
         )
     }

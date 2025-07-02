@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::Parser;
 use josh_sync::config::{JoshConfig, load_config};
 use josh_sync::josh::{JoshProxy, try_install_josh};
-use josh_sync::sync::{GitSync, RustcPullError};
+use josh_sync::sync::{GitSync, RustcPullError, UPSTREAM_REPO};
 use josh_sync::utils::prompt;
 use std::path::{Path, PathBuf};
 
@@ -18,11 +18,22 @@ struct Args {
 enum Command {
     /// Initialize a config file for this repository.
     Init,
-    /// Pull changes from the main `rustc` repository.
+    /// Pull changes from the main `rust-lang/rust` repository.
     /// This creates new commits that should be then merged into this subtree repository.
     Pull {
         #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
         config: PathBuf,
+    },
+    /// Push changes into the main `rust-lang/rust` repository `branch` of a `rustc` fork under
+    /// the given GitHub `username`.
+    /// The pushed branch should then be merged into the `rustc` repository.
+    Push {
+        #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
+        config: PathBuf,
+        /// Branch that should be pushed to your remote
+        branch: String,
+        /// Your GitHub usename where the fork is located
+        username: String,
     },
 }
 
@@ -48,7 +59,11 @@ fn main() -> anyhow::Result<()> {
             let sync = GitSync::new(config.clone(), josh);
             match sync.rustc_pull() {
                 Ok(result) => {
-                    maybe_create_gh_pr(&config.config, &result.merge_commit_message)?;
+                    maybe_create_gh_pr(
+                        &config.config.full_repo_name(),
+                        "Rustc pull update",
+                        &result.merge_commit_message,
+                    )?;
                 }
                 Err(RustcPullError::NothingToPull) => {
                     eprintln!("Nothing to pull");
@@ -60,35 +75,55 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Command::Push {
+            username,
+            branch,
+            config,
+        } => {
+            let config = load_config(&config)
+                .context("cannot load config. Run the `init` command to initialize it.")?;
+            let josh = get_josh_proxy()?;
+            let sync = GitSync::new(config.clone(), josh);
+            sync.rustc_push(&username, &branch)
+                .context("cannot perform push")?;
+
+            // Open PR with `subtree update` title to silence the `no-merges` triagebot check
+            println!(
+                r#"You can create the rustc PR using the following URL:
+https://github.com/{UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}+subtree+update&body=r?+@ghost"#,
+                config.config.repo
+            );
+        }
     }
 
     Ok(())
 }
 
-fn maybe_create_gh_pr(config: &JoshConfig, pr_description: &str) -> anyhow::Result<()> {
+fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Result<bool> {
     let gh_available = which::which("gh").is_ok();
     if !gh_available {
         println!(
             "Note: if you install the `gh` CLI tool, josh-sync will be able to create the sync PR for you."
         );
+        Ok(false)
     } else if prompt("Do you want to create a rustc pull PR using the `gh` tool?") {
-        let repo = config.full_repo_name();
         std::process::Command::new("gh")
             .args(&[
                 "pr",
                 "create",
                 "--title",
-                "Rustc pull update",
+                title,
                 "--body",
-                pr_description,
+                description,
                 "--repo",
-                &repo,
+                repo,
             ])
             .spawn()?
             .wait()?;
+        Ok(true)
+    } else {
+        Ok(false)
     }
-
-    Ok(())
 }
 
 fn get_josh_proxy() -> anyhow::Result<JoshProxy> {

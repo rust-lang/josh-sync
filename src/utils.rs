@@ -1,22 +1,36 @@
+use std::path::Path;
 use std::process::{Command, Stdio};
 
-/// Run a command from an array, collecting its output.
-pub fn check_output<'a, Args: AsRef<[&'a str]>>(l: Args) -> anyhow::Result<String> {
-    let args = l.as_ref();
+/// Run command and return its stdout.
+pub fn check_output<'a, Args: AsRef<[&'a str]>>(args: Args) -> anyhow::Result<String> {
+    check_output_at(args, &std::env::current_dir()?, false)
+}
+
+pub fn check_output_at<'a, Args: AsRef<[&'a str]>>(
+    args: Args,
+    workdir: &Path,
+    ignore_stderr: bool,
+) -> anyhow::Result<String> {
+    let args = args.as_ref();
 
     let mut cmd = Command::new(args[0]);
+    cmd.current_dir(workdir);
     cmd.args(&args[1..]);
-    cmd.stderr(Stdio::inherit());
+
+    if ignore_stderr {
+        cmd.stderr(Stdio::null());
+    }
     eprintln!("+ {cmd:?}");
     let out = cmd.output().expect("command failed");
     let stdout = String::from_utf8_lossy(out.stdout.trim_ascii()).to_string();
     if !out.status.success() {
-        panic!(
+        Err(anyhow::anyhow!(
             "Command `{cmd:?}` failed with exit code {:?}. STDOUT:\n{stdout}",
             out.status.code()
-        );
+        ))
+    } else {
+        Ok(stdout)
     }
-    Ok(stdout)
 }
 
 /// Fail if there are files that need to be checked in.
