@@ -23,6 +23,10 @@ fn construct_filter(path: &str) -> String {
     format!(":/{path}")
 }
 
+pub struct PullResult {
+    pub merge_commit_message: String,
+}
+
 pub struct GitSync {
     config: JoshConfigWithPath,
     proxy: JoshProxy,
@@ -33,7 +37,7 @@ impl GitSync {
         Self { config, proxy }
     }
 
-    pub fn rustc_pull(&self) -> Result<(), RustcPullError> {
+    pub fn rustc_pull(&self) -> Result<PullResult, RustcPullError> {
         // The upstream commit that we want to pull
         let upstream_sha = {
             let out = check_output([
@@ -170,7 +174,9 @@ Filtered ref: {incoming_ref}
         }
 
         println!("Pull finished! Current HEAD is {current_sha}");
-        Ok(())
+        Ok(PullResult {
+            merge_commit_message: merge_message,
+        })
     }
 }
 

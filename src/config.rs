@@ -26,6 +26,7 @@ impl JoshConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct JoshConfigWithPath {
     pub config: JoshConfig,
     pub path: PathBuf,

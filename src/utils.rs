@@ -25,3 +25,22 @@ pub fn ensure_clean_git_state() {
         .expect("cannot figure out if git state is clean");
     assert!(read.is_empty(), "working directory must be clean");
 }
+
+/// Ask a prompt to user and return true if they responded with `y`.
+pub fn prompt(prompt: &str) -> bool {
+    // Do not run interactive prompts on CI
+    if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("1") {
+        return false;
+    }
+
+    println!("{prompt} [y/n]");
+    read_line().to_lowercase() == "y"
+}
+
+pub fn read_line() -> String {
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .expect("cannot read line from stdin");
+    line.trim().to_string()
+}

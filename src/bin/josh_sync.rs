@@ -3,6 +3,7 @@ use clap::Parser;
 use josh_sync::config::{JoshConfig, load_config};
 use josh_sync::josh::{JoshProxy, try_install_josh};
 use josh_sync::sync::{GitSync, RustcPullError};
+use josh_sync::utils::prompt;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_CONFIG_PATH: &str = "josh-sync.toml";
@@ -44,20 +45,47 @@ fn main() -> anyhow::Result<()> {
             let config = load_config(&config)
                 .context("cannot load config. Run the `init` command to initialize it.")?;
             let josh = get_josh_proxy()?;
-            let sync = GitSync::new(config, josh);
-            if let Err(error) = sync.rustc_pull() {
-                match error {
-                    RustcPullError::NothingToPull => {
-                        eprintln!("Nothing to pull");
-                        std::process::exit(2);
-                    }
-                    RustcPullError::PullFailed(error) => {
-                        eprintln!("Pull failure: {error:?}");
-                        std::process::exit(1);
-                    }
+            let sync = GitSync::new(config.clone(), josh);
+            match sync.rustc_pull() {
+                Ok(result) => {
+                    maybe_create_gh_pr(&config.config, &result.merge_commit_message)?;
+                }
+                Err(RustcPullError::NothingToPull) => {
+                    eprintln!("Nothing to pull");
+                    std::process::exit(2);
+                }
+                Err(RustcPullError::PullFailed(error)) => {
+                    eprintln!("Pull failure: {error:?}");
+                    std::process::exit(1);
                 }
             }
         }
+    }
+
+    Ok(())
+}
+
+fn maybe_create_gh_pr(config: &JoshConfig, pr_description: &str) -> anyhow::Result<()> {
+    let gh_available = which::which("gh").is_ok();
+    if !gh_available {
+        println!(
+            "Note: if you install the `gh` CLI tool, josh-sync will be able to create the sync PR for you."
+        );
+    } else if prompt("Do you want to create a rustc pull PR using the `gh` tool?") {
+        let repo = config.full_repo_name();
+        std::process::Command::new("gh")
+            .args(&[
+                "pr",
+                "create",
+                "--title",
+                "Rustc pull update",
+                "--body",
+                pr_description,
+                "--repo",
+                &repo,
+            ])
+            .spawn()?
+            .wait()?;
     }
 
     Ok(())
@@ -67,10 +95,7 @@ fn get_josh_proxy() -> anyhow::Result<JoshProxy> {
     match JoshProxy::lookup() {
         Some(proxy) => Ok(proxy),
         None => {
-            println!("josh-proxy not found. Do you want to install it? [y/n]");
-            let mut line = String::new();
-            std::io::stdin().read_line(&mut line)?;
-            if line.trim().to_lowercase() == "y" {
+            if prompt("josh-proxy not found. Do you want to install it?") {
                 match try_install_josh() {
                     Some(proxy) => Ok(proxy),
                     None => Err(anyhow::anyhow!("Could not install josh-proxy")),
