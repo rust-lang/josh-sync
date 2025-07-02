@@ -1,4 +1,3 @@
 org = "rust-lang"
 repo = "stdarch"
 path = "library/stdarch"
-last_upstream_sha = "abcdef"

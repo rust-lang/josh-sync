@@ -1,4 +1,4 @@
-use crate::config::JoshConfigWithPath;
+use crate::SyncContext;
 use crate::josh::JoshProxy;
 use crate::utils::{check_output, check_output_at, ensure_clean_git_state};
 use anyhow::{Context, Error};
@@ -29,13 +29,13 @@ pub struct PullResult {
 }
 
 pub struct GitSync {
-    config: JoshConfigWithPath,
+    context: SyncContext,
     proxy: JoshProxy,
 }
 
 impl GitSync {
-    pub fn new(config: JoshConfigWithPath, proxy: JoshProxy) -> Self {
-        Self { config, proxy }
+    pub fn new(context: SyncContext, proxy: JoshProxy) -> Self {
+        Self { context, proxy }
     }
 
     pub fn rustc_pull(&self) -> Result<PullResult, RustcPullError> {
@@ -59,26 +59,26 @@ impl GitSync {
         // Make sure josh is running.
         let josh = self
             .proxy
-            .start(&self.config.config)
+            .start(&self.context.config)
             .context("cannot start josh-proxy")?;
         let josh_url = josh.git_url(
             UPSTREAM_REPO,
             Some(&upstream_sha),
-            &construct_filter(&self.config.config.path),
+            &construct_filter(&self.context.config.path),
         );
 
         let orig_head = check_output(["git", "rev-parse", "HEAD"])?;
         println!(
             "previous upstream base: {:?}",
-            self.config.config.last_upstream_sha
+            self.context.last_upstream_sha
         );
         println!("new upstream base: {upstream_sha}");
         println!("original local HEAD: {orig_head}");
 
-        /// If the upstream SHA hasn't changed from the latest sync, there is nothing to pull
-        /// We distinguish this situation for tools that might not want to consider this to
-        /// be an error.
-        if let Some(previous_base_commit) = self.config.config.last_upstream_sha.as_ref() {
+        // If the upstream SHA hasn't changed from the latest sync, there is nothing to pull
+        // We distinguish this situation for tools that might not want to consider this to
+        // be an error.
+        if let Some(previous_base_commit) = self.context.last_upstream_sha.as_ref() {
             if *previous_base_commit == upstream_sha {
                 return Err(RustcPullError::NothingToPull);
             }
@@ -89,16 +89,23 @@ impl GitSync {
         // We pass `--no-verify` to avoid running git hooks.
         // We do this before the merge so that if there are merge conflicts, we have
         // the right rust-version file while resolving them.
-        let mut config = self.config.config.clone();
-        config.last_upstream_sha = Some(upstream_sha.clone());
-        config.write(&self.config.path)?;
+        std::fs::write(&self.context.last_upstream_sha_path, &upstream_sha).with_context(|| {
+            anyhow::anyhow!(
+                "cannot write upstream SHA to {}",
+                self.context.last_upstream_sha_path.display()
+            )
+        })?;
 
         let prep_message = format!(
             r#"Update the upstream Rust SHA to {upstream_sha}.
 To prepare for merging from {UPSTREAM_REPO}."#,
         );
 
-        let config_path = self.config.path.to_string_lossy().to_string();
+        let config_path = self
+            .context
+            .last_upstream_sha_path
+            .to_string_lossy()
+            .to_string();
         check_output(&["git", "add", &config_path])?;
         check_output(&[
             "git",
@@ -143,7 +150,7 @@ Upstream ref: {upstream_sha}
 Filtered ref: {incoming_ref}
             "#,
             upstream_head_short = &upstream_sha[..12],
-            filter = construct_filter(&self.config.config.path)
+            filter = construct_filter(&self.context.config.path)
         );
 
         // Merge the fetched commit.
@@ -186,22 +193,17 @@ Filtered ref: {incoming_ref}
     pub fn rustc_push(&self, username: &str, branch: &str) -> anyhow::Result<()> {
         ensure_clean_git_state();
 
-        let base_upstream_sha = self
-            .config
-            .config
-            .last_upstream_sha
-            .clone()
-            .unwrap_or_default();
+        let base_upstream_sha = self.context.last_upstream_sha.clone().unwrap_or_default();
 
         // Make sure josh is running.
         let josh = self
             .proxy
-            .start(&self.config.config)
+            .start(&self.context.config)
             .context("cannot start josh-proxy")?;
         let josh_url = josh.git_url(
             &format!("{username}/rust"),
             None,
-            &construct_filter(&self.config.config.path),
+            &construct_filter(&self.context.config.path),
         );
         let user_upstream_url = format!("https://github.com/{username}/rust");
 
@@ -273,7 +275,7 @@ Filtered ref: {incoming_ref}
         }
         println!(
             "Confirmed that the push round-trips back to {} properly. Please create a rustc PR.",
-            self.config.config.repo
+            self.context.config.repo
         );
 
         Ok(())

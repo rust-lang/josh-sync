@@ -1,5 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
+use josh_sync::SyncContext;
 use josh_sync::config::{JoshConfig, load_config};
 use josh_sync::josh::{JoshProxy, try_install_josh};
 use josh_sync::sync::{GitSync, RustcPullError, UPSTREAM_REPO};
@@ -7,6 +8,7 @@ use josh_sync::utils::prompt;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_CONFIG_PATH: &str = "josh-sync.toml";
+const DEFAULT_RUST_VERSION_PATH: &str = "rust-version";
 
 #[derive(clap::Parser)]
 struct Args {
@@ -16,20 +18,24 @@ struct Args {
 
 #[derive(clap::Parser)]
 enum Command {
-    /// Initialize a config file for this repository.
+    /// Initialize a config file and an empty `rust-version` file for this repository.
     Init,
     /// Pull changes from the main `rust-lang/rust` repository.
     /// This creates new commits that should be then merged into this subtree repository.
     Pull {
         #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
-        config: PathBuf,
+        config_path: PathBuf,
+        #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
+        rust_version_path: PathBuf,
     },
     /// Push changes into the main `rust-lang/rust` repository `branch` of a `rustc` fork under
     /// the given GitHub `username`.
     /// The pushed branch should then be merged into the `rustc` repository.
     Push {
         #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
-        config: PathBuf,
+        config_path: PathBuf,
+        #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
+        rust_version_path: PathBuf,
         /// Branch that should be pushed to your remote
         branch: String,
         /// Your GitHub usename where the fork is located
@@ -45,22 +51,26 @@ fn main() -> anyhow::Result<()> {
                 org: "rust-lang".to_string(),
                 repo: "<repository-name>".to_string(),
                 path: "<relative-subtree-path>".to_string(),
-                last_upstream_sha: None,
             };
             config
                 .write(Path::new(DEFAULT_CONFIG_PATH))
                 .context("cannot write config")?;
             println!("Created config file at {DEFAULT_CONFIG_PATH}");
+            std::fs::write(DEFAULT_RUST_VERSION_PATH, "")
+                .context("cannot write rust-version file")?;
+            println!("Created empty rust-version file at {DEFAULT_RUST_VERSION_PATH}");
         }
-        Command::Pull { config } => {
-            let config = load_config(&config)
-                .context("cannot load config. Run the `init` command to initialize it.")?;
+        Command::Pull {
+            config_path,
+            rust_version_path,
+        } => {
+            let ctx = load_context(&config_path, &rust_version_path)?;
             let josh = get_josh_proxy()?;
-            let sync = GitSync::new(config.clone(), josh);
+            let sync = GitSync::new(ctx.clone(), josh);
             match sync.rustc_pull() {
                 Ok(result) => {
                     maybe_create_gh_pr(
-                        &config.config.full_repo_name(),
+                        &ctx.config.full_repo_name(),
                         "Rustc pull update",
                         &result.merge_commit_message,
                     )?;
@@ -78,12 +88,12 @@ fn main() -> anyhow::Result<()> {
         Command::Push {
             username,
             branch,
-            config,
+            config_path,
+            rust_version_path,
         } => {
-            let config = load_config(&config)
-                .context("cannot load config. Run the `init` command to initialize it.")?;
+            let ctx = load_context(&config_path, &rust_version_path)?;
             let josh = get_josh_proxy()?;
-            let sync = GitSync::new(config.clone(), josh);
+            let sync = GitSync::new(ctx.clone(), josh);
             sync.rustc_push(&username, &branch)
                 .context("cannot perform push")?;
 
@@ -91,12 +101,26 @@ fn main() -> anyhow::Result<()> {
             println!(
                 r#"You can create the rustc PR using the following URL:
 https://github.com/{UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}+subtree+update&body=r?+@ghost"#,
-                config.config.repo
+                ctx.config.repo
             );
         }
     }
 
     Ok(())
+}
+
+fn load_context(config_path: &Path, rust_version_path: &Path) -> anyhow::Result<SyncContext> {
+    let config = load_config(&config_path)
+        .context("cannot load config. Run the `init` command to initialize it.")?;
+    let rust_version = std::fs::read_to_string(&rust_version_path)
+        .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
+        .map(Some)
+        .unwrap_or_default();
+    Ok(SyncContext {
+        config,
+        last_upstream_sha_path: rust_version_path.to_path_buf(),
+        last_upstream_sha: rust_version,
+    })
 }
 
 fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Result<bool> {

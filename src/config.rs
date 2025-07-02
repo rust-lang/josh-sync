@@ -1,5 +1,5 @@
 use anyhow::Context;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct JoshConfig {
@@ -9,9 +9,6 @@ pub struct JoshConfig {
     /// Relative path where the subtree is located in rust-lang/rust.
     /// For example `src/doc/rustc-dev-guide`.
     pub path: String,
-    /// Last SHA of rust-lang/rust that was pulled into this subtree.
-    #[serde(default)]
-    pub last_upstream_sha: Option<String>,
 }
 
 impl JoshConfig {
@@ -26,22 +23,13 @@ impl JoshConfig {
     }
 }
 
-#[derive(Clone)]
-pub struct JoshConfigWithPath {
-    pub config: JoshConfig,
-    pub path: PathBuf,
-}
-
 fn default_org() -> String {
     String::from("rust-lang")
 }
 
-pub fn load_config(path: &Path) -> anyhow::Result<JoshConfigWithPath> {
+pub fn load_config(path: &Path) -> anyhow::Result<JoshConfig> {
     let data = std::fs::read_to_string(path)
         .with_context(|| format!("cannot load config file from {}", path.display()))?;
     let config: JoshConfig = toml::from_str(&data).context("cannot load config as TOML")?;
-    Ok(JoshConfigWithPath {
-        config,
-        path: path.to_path_buf(),
-    })
+    Ok(config)
 }
