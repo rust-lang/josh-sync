@@ -2,14 +2,19 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 /// Run command and return its stdout.
-pub fn check_output<'a, Args: AsRef<[&'a str]>>(args: Args) -> anyhow::Result<String> {
-    check_output_at(args, &std::env::current_dir()?, false)
+pub fn run_command<'a, Args: AsRef<[&'a str]>>(args: Args) -> anyhow::Result<String> {
+    run_command_at(args, &std::env::current_dir()?, StderrMode::Print)
 }
 
-pub fn check_output_at<'a, Args: AsRef<[&'a str]>>(
+pub enum StderrMode {
+    Ignore,
+    Print,
+}
+
+pub fn run_command_at<'a, Args: AsRef<[&'a str]>>(
     args: Args,
     workdir: &Path,
-    ignore_stderr: bool,
+    stderr: StderrMode,
 ) -> anyhow::Result<String> {
     let args = args.as_ref();
 
@@ -17,7 +22,7 @@ pub fn check_output_at<'a, Args: AsRef<[&'a str]>>(
     cmd.current_dir(workdir);
     cmd.args(&args[1..]);
 
-    if ignore_stderr {
+    if matches!(stderr, StderrMode::Ignore) {
         cmd.stderr(Stdio::null());
     }
     eprintln!("+ {cmd:?}");
@@ -35,7 +40,7 @@ pub fn check_output_at<'a, Args: AsRef<[&'a str]>>(
 
 /// Fail if there are files that need to be checked in.
 pub fn ensure_clean_git_state() {
-    let read = check_output(["git", "status", "--untracked-files=no", "--porcelain"])
+    let read = run_command(["git", "status", "--untracked-files=no", "--porcelain"])
         .expect("cannot figure out if git state is clean");
     assert!(read.is_empty(), "working directory must be clean");
 }

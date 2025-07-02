@@ -1,5 +1,5 @@
 use crate::config::JoshConfig;
-use crate::utils::check_output;
+use crate::utils::run_command;
 use anyhow::Context;
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
@@ -61,7 +61,7 @@ impl JoshProxy {
 }
 
 pub fn try_install_josh() -> Option<JoshProxy> {
-    check_output(&[
+    run_command(&[
         "cargo",
         "install",
         "--locked",

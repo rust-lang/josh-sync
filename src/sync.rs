@@ -1,6 +1,6 @@
 use crate::SyncContext;
 use crate::josh::JoshProxy;
-use crate::utils::{check_output, check_output_at, ensure_clean_git_state};
+use crate::utils::{StderrMode, ensure_clean_git_state, run_command, run_command_at};
 use anyhow::{Context, Error};
 use std::path::{Path, PathBuf};
 
@@ -36,7 +36,7 @@ impl GitSync {
     pub fn rustc_pull(&self) -> Result<PullResult, RustcPullError> {
         // The upstream commit that we want to pull
         let upstream_sha = {
-            let out = check_output([
+            let out = run_command([
                 "git",
                 "ls-remote",
                 &format!("https://github.com/{UPSTREAM_REPO}"),
@@ -62,7 +62,7 @@ impl GitSync {
             &self.context.config.construct_josh_filter(),
         );
 
-        let orig_head = check_output(["git", "rev-parse", "HEAD"])?;
+        let orig_head = run_command(["git", "rev-parse", "HEAD"])?;
         println!(
             "previous upstream base: {:?}",
             self.context.last_upstream_sha
@@ -101,8 +101,8 @@ To prepare for merging from {UPSTREAM_REPO}."#,
             .last_upstream_sha_path
             .to_string_lossy()
             .to_string();
-        check_output(&["git", "add", &config_path])?;
-        check_output(&[
+        run_command(&["git", "add", &config_path])?;
+        run_command(&[
             "git",
             "commit",
             &config_path,
@@ -116,13 +116,12 @@ To prepare for merging from {UPSTREAM_REPO}."#,
         let mut git_reset = GitResetOnDrop::new(orig_head);
 
         // Fetch given rustc commit.
-        check_output(&["git", "fetch", &josh_url])
-            .context("cannot fetch git state through Josh")?;
+        run_command(&["git", "fetch", &josh_url]).context("cannot fetch git state through Josh")?;
 
         // This should not add any new root commits. So count those before and after merging.
         let num_roots = || -> anyhow::Result<u32> {
             Ok(
-                check_output(&["git", "rev-list", "HEAD", "--max-parents=0", "--count"])
+                run_command(&["git", "rev-list", "HEAD", "--max-parents=0", "--count"])
                     .context("failed to determine the number of root commits")?
                     .parse::<u32>()?,
             )
@@ -130,10 +129,10 @@ To prepare for merging from {UPSTREAM_REPO}."#,
         let num_roots_before = num_roots()?;
 
         let sha =
-            check_output(&["git", "rev-parse", "HEAD"]).context("failed to get current commit")?;
+            run_command(&["git", "rev-parse", "HEAD"]).context("failed to get current commit")?;
 
         // The filtered SHA of upstream
-        let incoming_ref = check_output(["git", "rev-parse", "FETCH_HEAD"])?;
+        let incoming_ref = run_command(["git", "rev-parse", "FETCH_HEAD"])?;
         println!("incoming ref: {incoming_ref}");
 
         let merge_message = format!(
@@ -149,7 +148,7 @@ Filtered ref: {incoming_ref}
         );
 
         // Merge the fetched commit.
-        check_output(&[
+        run_command(&[
             "git",
             "merge",
             "FETCH_HEAD",
@@ -161,7 +160,7 @@ Filtered ref: {incoming_ref}
         .context("FAILED to merge new commits, something went wrong")?;
 
         let current_sha =
-            check_output(&["git", "rev-parse", "HEAD"]).context("FAILED to get current commit")?;
+            run_command(&["git", "rev-parse", "HEAD"]).context("FAILED to get current commit")?;
         if current_sha == sha {
             eprintln!(
                 "No merge was performed, no changes to pull were found. Rolling back the preparation commit."
@@ -210,10 +209,10 @@ Filtered ref: {incoming_ref}
         println!("Preparing {user_upstream_url} (base: {base_upstream_sha})...");
 
         // Check if the remote branch doesn't already exist
-        if check_output_at(
+        if run_command_at(
             &["git", "fetch", &user_upstream_url, branch],
             &rustc_git,
-            true,
+            StderrMode::Print,
         )
         .is_ok()
         {
@@ -223,7 +222,7 @@ Filtered ref: {incoming_ref}
         }
 
         // Download the base upstream SHA
-        check_output_at(
+        run_command_at(
             &[
                 "git",
                 "fetch",
@@ -231,12 +230,12 @@ Filtered ref: {incoming_ref}
                 &base_upstream_sha,
             ],
             &rustc_git,
-            false,
+            StderrMode::Print,
         )
         .context("cannot download latest upstream SHA")?;
 
         // And push it to the user's fork's branch
-        check_output_at(
+        run_command_at(
             &[
                 "git",
                 "push",
@@ -244,24 +243,24 @@ Filtered ref: {incoming_ref}
                 &format!("{base_upstream_sha}:refs/heads/{branch}"),
             ],
             &rustc_git,
-            true,
+            StderrMode::Ignore,
         )
         .context("cannot push to your fork")?;
         println!();
 
         // Do the actual push from the subtree git repo
         println!("Pushing changes...");
-        check_output(&["git", "push", &josh_url, &format!("HEAD:{branch}")])?;
+        run_command(&["git", "push", &josh_url, &format!("HEAD:{branch}")])?;
         println!();
 
         // Do a round-trip check to make sure the push worked as expected.
-        check_output_at(
+        run_command_at(
             &["git", "fetch", &josh_url, &branch],
             &std::env::current_dir().unwrap(),
-            true,
+            StderrMode::Ignore,
         )?;
-        let head = check_output(&["git", "rev-parse", "HEAD"])?;
-        let fetch_head = check_output(&["git", "rev-parse", "FETCH_HEAD"])?;
+        let head = run_command(&["git", "rev-parse", "HEAD"])?;
+        let fetch_head = run_command(&["git", "rev-parse", "FETCH_HEAD"])?;
         if head != fetch_head {
             return Err(anyhow::anyhow!(
                 "Josh created a non-roundtrip push! Do NOT merge this into rustc!\n\
@@ -294,7 +293,7 @@ fn prepare_rustc_checkout() -> anyhow::Result<PathBuf> {
         println!(
             "Cloning rustc into `{path}`. Use RUSTC_GIT environment variable to override the location of the checkout"
         );
-        check_output(&[
+        run_command(&[
             "git",
             "clone",
             "--filter=blob:none",
@@ -329,7 +328,7 @@ impl Drop for GitResetOnDrop {
     fn drop(&mut self) {
         if !self.disarmed {
             eprintln!("Reverting HEAD to {}", self.reset_to);
-            check_output(&["git", "reset", "--hard", &self.reset_to])
+            run_command(&["git", "reset", "--hard", &self.reset_to])
                 .expect(&format!("cannot reset current branch to {}", self.reset_to));
         }
     }
