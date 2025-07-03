@@ -7,6 +7,8 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 const JOSH_PORT: u16 = 42042;
+/// Version of `josh-proxy` that should be downloaded for the user.
+const JOSH_VERSION: &str = "r24.10.04";
 
 pub struct JoshProxy {
     path: PathBuf,
@@ -68,7 +70,7 @@ pub fn try_install_josh() -> Option<JoshProxy> {
         "--git",
         "https://github.com/josh-project/josh",
         "--tag",
-        "r24.10.04",
+        JOSH_VERSION,
         "josh-proxy",
     ])
     .expect("cannot install josh-proxy");
