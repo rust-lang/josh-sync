@@ -141,7 +141,7 @@ This updates the rust-version file to {upstream_sha}."#,
         println!("incoming ref: {incoming_ref}");
 
         let merge_message = format!(
-            r#"Merge ref '{upstream_head_short}{filter}' from {UPSTREAM_REPO}
+            r#"Merge ref '{upstream_head_short}' from {UPSTREAM_REPO}
 
 Pull recent changes from {UPSTREAM_REPO} via Josh.
 
@@ -149,7 +149,6 @@ Upstream ref: {upstream_sha}
 Filtered ref: {incoming_ref}
 "#,
             upstream_head_short = &upstream_sha[..12],
-            filter = self.context.config.construct_josh_filter()
         );
 
         // Merge the fetched commit.
