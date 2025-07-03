@@ -1,5 +1,3 @@
-use regex::Regex;
-use std::borrow::Cow;
 use std::path::Path;
 use std::process::Command;
 
@@ -57,11 +55,4 @@ pub fn read_line() -> String {
         .read_line(&mut line)
         .expect("cannot read line from stdin");
     line.trim().to_string()
-}
-
-/// Replace `#1234`-style issue/PR references with `repo#1234` to ensure links work across
-/// repositories.
-pub fn replace_references<'a>(text: &'a str, repo: &str) -> Cow<'a, str> {
-    let regex = Regex::new(r"\B(?P<id>#\d+)\b").unwrap();
-    regex.replace(text, &format!("{repo}$id"))
 }
