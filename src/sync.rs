@@ -1,8 +1,8 @@
 use crate::SyncContext;
 use crate::josh::JoshProxy;
-use crate::utils::ensure_clean_git_state;
 use crate::utils::run_command;
 use crate::utils::run_command_at;
+use crate::utils::{ensure_clean_git_state, prompt};
 use anyhow::{Context, Error};
 use std::path::{Path, PathBuf};
 
@@ -284,17 +284,27 @@ fn prepare_rustc_checkout() -> anyhow::Result<PathBuf> {
     // Otherwise, download it
     let path = "rustc-checkout";
     if !Path::new(path).join(".git").exists() {
-        println!(
-            "Cloning rustc into `{path}`. Use RUSTC_GIT environment variable to override the location of the checkout"
-        );
-        run_command(&[
-            "git",
-            "clone",
-            "--filter=blob:none",
-            "https://github.com/rust-lang/rust",
-            path,
-        ])
-        .context("cannot clone rustc")?;
+        if prompt(
+            &format!(
+                "Path to a rustc checkout is not configured via the RUSTC_GIT environment variable, and {path} directory was not found. Do you want to download a rustc checkout into {path}?",
+            ),
+            // Download git history if we are on CI
+            true,
+        ) {
+            println!(
+                "Cloning rustc into `{path}`. Use RUSTC_GIT environment variable to override the location of the checkout"
+            );
+            run_command(&[
+                "git",
+                "clone",
+                "--filter=blob:none",
+                "https://github.com/rust-lang/rust",
+                path,
+            ])
+            .context("cannot clone rustc")?;
+        } else {
+            return Err(anyhow::anyhow!("cannot continue without a rustc checkout"));
+        }
     }
     Ok(PathBuf::from(path))
 }
