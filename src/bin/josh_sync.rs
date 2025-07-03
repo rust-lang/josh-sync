@@ -153,17 +153,9 @@ fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Res
 }
 
 fn get_josh_proxy() -> anyhow::Result<JoshProxy> {
-    match JoshProxy::lookup() {
+    println!("Updating/installing josh-proxy binary...");
+    match try_install_josh() {
         Some(proxy) => Ok(proxy),
-        None => {
-            if prompt("josh-proxy not found. Do you want to install it?") {
-                match try_install_josh() {
-                    Some(proxy) => Ok(proxy),
-                    None => Err(anyhow::anyhow!("Could not install josh-proxy")),
-                }
-            } else {
-                Err(anyhow::anyhow!("josh-proxy could not be found"))
-            }
-        }
+        None => Err(anyhow::anyhow!("Could not install josh-proxy")),
     }
 }

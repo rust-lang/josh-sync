@@ -1,22 +1,16 @@
 use regex::Regex;
 use std::borrow::Cow;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 /// Run command and return its stdout.
 pub fn run_command<'a, Args: AsRef<[&'a str]>>(args: Args) -> anyhow::Result<String> {
-    run_command_at(args, &std::env::current_dir()?, StderrMode::Print)
-}
-
-pub enum StderrMode {
-    Ignore,
-    Print,
+    run_command_at(args, &std::env::current_dir()?)
 }
 
 pub fn run_command_at<'a, Args: AsRef<[&'a str]>>(
     args: Args,
     workdir: &Path,
-    stderr: StderrMode,
 ) -> anyhow::Result<String> {
     let args = args.as_ref();
 
@@ -24,15 +18,13 @@ pub fn run_command_at<'a, Args: AsRef<[&'a str]>>(
     cmd.current_dir(workdir);
     cmd.args(&args[1..]);
 
-    if matches!(stderr, StderrMode::Ignore) {
-        cmd.stderr(Stdio::null());
-    }
     eprintln!("+ {cmd:?}");
     let out = cmd.output().expect("command failed");
     let stdout = String::from_utf8_lossy(out.stdout.trim_ascii()).to_string();
+    let stderr = String::from_utf8_lossy(out.stderr.trim_ascii()).to_string();
     if !out.status.success() {
         Err(anyhow::anyhow!(
-            "Command `{cmd:?}` failed with exit code {:?}. STDOUT:\n{stdout}",
+            "Command `{cmd:?}` failed with exit code {:?}. STDOUT:\n{stdout}\nSTDERR:\n{stderr}",
             out.status.code()
         ))
     } else {

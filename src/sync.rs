@@ -1,8 +1,6 @@
 use crate::SyncContext;
 use crate::josh::JoshProxy;
-use crate::utils::{
-    StderrMode, ensure_clean_git_state, replace_references, run_command, run_command_at,
-};
+use crate::utils::{ensure_clean_git_state, replace_references, run_command, run_command_at};
 use anyhow::{Context, Error};
 use std::path::{Path, PathBuf};
 
@@ -225,13 +223,7 @@ Filtered ref: {incoming_ref}
         println!("Preparing {user_upstream_url} (base: {base_upstream_sha})...");
 
         // Check if the remote branch doesn't already exist
-        if run_command_at(
-            &["git", "fetch", &user_upstream_url, branch],
-            &rustc_git,
-            StderrMode::Print,
-        )
-        .is_ok()
-        {
+        if run_command_at(&["git", "fetch", &user_upstream_url, branch], &rustc_git).is_ok() {
             return Err(anyhow::anyhow!(
                 "The branch '{branch}' seems to already exist in '{user_upstream_url}'. Please delete it and try again."
             ));
@@ -246,7 +238,6 @@ Filtered ref: {incoming_ref}
                 &base_upstream_sha,
             ],
             &rustc_git,
-            StderrMode::Print,
         )
         .context("cannot download latest upstream SHA")?;
 
@@ -259,7 +250,6 @@ Filtered ref: {incoming_ref}
                 &format!("{base_upstream_sha}:refs/heads/{branch}"),
             ],
             &rustc_git,
-            StderrMode::Ignore,
         )
         .context("cannot push to your fork")?;
         println!();
@@ -273,7 +263,6 @@ Filtered ref: {incoming_ref}
         run_command_at(
             &["git", "fetch", &josh_url, &branch],
             &std::env::current_dir().unwrap(),
-            StderrMode::Ignore,
         )?;
         let head = run_command(&["git", "rev-parse", "HEAD"])?;
         let fetch_head = run_command(&["git", "rev-parse", "FETCH_HEAD"])?;
