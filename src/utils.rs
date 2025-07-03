@@ -40,10 +40,11 @@ pub fn ensure_clean_git_state() {
 }
 
 /// Ask a prompt to user and return true if they responded with `y`.
-pub fn prompt(prompt: &str) -> bool {
+/// Returns `default_response` on CI.
+pub fn prompt(prompt: &str, default_response: bool) -> bool {
     // Do not run interactive prompts on CI
     if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("1") {
-        return false;
+        return default_response;
     }
 
     println!("{prompt} [y/n]");
