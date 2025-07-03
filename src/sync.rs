@@ -99,16 +99,18 @@ impl GitSync {
 This updates the rust-version file to {upstream_sha}."#,
         );
 
-        let config_path = self
+        let rust_version_path = self
             .context
             .last_upstream_sha_path
             .to_string_lossy()
             .to_string();
-        run_command(&["git", "add", &config_path])?;
+        // Add the file to git index, in case this is the first time we perform the sync
+        // Otherwise `git commit <file>` below wouldn't work.
+        run_command(&["git", "add", &rust_version_path])?;
         run_command(&[
             "git",
             "commit",
-            &config_path,
+            &rust_version_path,
             "--no-verify",
             "-m",
             &prep_message,
