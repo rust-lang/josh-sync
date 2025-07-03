@@ -156,7 +156,7 @@ Pull recent changes from {UPSTREAM_REPO} via Josh.
 
 Upstream ref: {upstream_sha}
 Filtered ref: {incoming_ref}
-            "#,
+"#,
             upstream_head_short = &upstream_sha[..12],
             filter = self.context.config.construct_josh_filter()
         );
