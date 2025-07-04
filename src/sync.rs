@@ -1,8 +1,8 @@
 use crate::SyncContext;
 use crate::josh::JoshProxy;
-use crate::utils::run_command;
 use crate::utils::run_command_at;
 use crate::utils::{ensure_clean_git_state, prompt};
+use crate::utils::{run_command, stream_command};
 use anyhow::{Context, Error};
 use std::path::{Path, PathBuf};
 
@@ -158,7 +158,8 @@ This merge was created using https://github.com/rust-lang/josh-sync.
         );
 
         // Merge the fetched commit.
-        run_command(&[
+        // It is useful to print stdout/stderr here, because it shows the git diff summary
+        stream_command(&[
             "git",
             "merge",
             "FETCH_HEAD",
@@ -301,7 +302,8 @@ fn prepare_rustc_checkout() -> anyhow::Result<PathBuf> {
             println!(
                 "Cloning rustc into `{path}`. Use RUSTC_GIT environment variable to override the location of the checkout"
             );
-            run_command(&[
+            // Stream stdout/stderr to the terminal, so that the user sees clone progress
+            stream_command(&[
                 "git",
                 "clone",
                 "--filter=blob:none",
