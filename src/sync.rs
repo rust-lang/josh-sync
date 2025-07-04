@@ -147,10 +147,12 @@ This updates the rust-version file to {upstream_sha}."#,
         let merge_message = format!(
             r#"Merge ref '{upstream_head_short}' from {UPSTREAM_REPO}
 
-Pull recent changes from {UPSTREAM_REPO} via Josh.
+Pull recent changes from https://github.com/{UPSTREAM_REPO} via Josh.
 
 Upstream ref: {upstream_sha}
 Filtered ref: {incoming_ref}
+
+This merge was created using https://github.com/rust-lang/josh-sync.
 "#,
             upstream_head_short = &upstream_sha[..12],
         );
