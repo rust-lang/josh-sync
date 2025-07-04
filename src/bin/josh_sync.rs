@@ -57,9 +57,14 @@ fn main() -> anyhow::Result<()> {
                 .write(Path::new(DEFAULT_CONFIG_PATH))
                 .context("cannot write config")?;
             println!("Created config file at {DEFAULT_CONFIG_PATH}");
-            std::fs::write(DEFAULT_RUST_VERSION_PATH, "")
-                .context("cannot write rust-version file")?;
-            println!("Created empty rust-version file at {DEFAULT_RUST_VERSION_PATH}");
+
+            if !Path::new(DEFAULT_RUST_VERSION_PATH).is_file() {
+                std::fs::write(DEFAULT_RUST_VERSION_PATH, "")
+                    .context("cannot write rust-version file")?;
+                println!("Created empty rust-version file at {DEFAULT_RUST_VERSION_PATH}");
+            } else {
+                println!("{DEFAULT_RUST_VERSION_PATH} already exists, not doing anything with it");
+            }
         }
         Command::Pull {
             config_path,
