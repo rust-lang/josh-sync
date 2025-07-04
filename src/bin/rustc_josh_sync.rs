@@ -125,6 +125,7 @@ fn load_context(config_path: &Path, rust_version_path: &Path) -> anyhow::Result<
         .context("cannot load config. Run the `init` command to initialize it.")?;
     let rust_version = std::fs::read_to_string(&rust_version_path)
         .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
+        .map(|version| version.trim().to_string())
         .map(Some)
         .unwrap_or_default();
     Ok(SyncContext {

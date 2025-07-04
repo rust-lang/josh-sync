@@ -86,7 +86,11 @@ impl GitSync {
         // We pass `--no-verify` to avoid running git hooks.
         // We do this before the merge so that if there are merge conflicts, we have
         // the right rust-version file while resolving them.
-        std::fs::write(&self.context.last_upstream_sha_path, &upstream_sha).with_context(|| {
+        std::fs::write(
+            &self.context.last_upstream_sha_path,
+            &format!("{upstream_sha}\n"),
+        )
+        .with_context(|| {
             anyhow::anyhow!(
                 "cannot write upstream SHA to {}",
                 self.context.last_upstream_sha_path.display()
