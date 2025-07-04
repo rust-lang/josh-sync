@@ -1,3 +1,4 @@
+use anyhow::Context;
 use std::path::Path;
 use std::process::Command;
 
@@ -65,6 +66,10 @@ pub fn ensure_clean_git_state() {
     let read = run_command(["git", "status", "--untracked-files=no", "--porcelain"])
         .expect("cannot figure out if git state is clean");
     assert!(read.is_empty(), "working directory must be clean");
+}
+
+pub fn get_current_head_sha() -> anyhow::Result<String> {
+    run_command(&["git", "rev-parse", "HEAD"]).context("failed to get current commit")
 }
 
 /// Ask a prompt to user and return true if they responded with `y`.
