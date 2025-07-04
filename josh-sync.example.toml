@@ -1,3 +1,10 @@
-org = "rust-lang"
+# GitHub org of the repository (optional, `rust-lang` is the default)
+#org = "rust-lang"
+# Name of the repository
 repo = "stdarch"
+# Path where the subtree is located in rust-lang/rust
 path = "library/stdarch"
+
+# Optionally, you can specify the complete Josh filter for complex cases
+# Note that this option is mutually exclusive with `path`
+#filter = ...
