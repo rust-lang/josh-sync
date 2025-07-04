@@ -1,10 +1,10 @@
 use anyhow::Context;
 use clap::Parser;
-use josh_sync::SyncContext;
-use josh_sync::config::{JoshConfig, load_config};
-use josh_sync::josh::{JoshProxy, try_install_josh};
-use josh_sync::sync::{GitSync, RustcPullError, UPSTREAM_REPO};
-use josh_sync::utils::prompt;
+use rustc_josh_sync::SyncContext;
+use rustc_josh_sync::config::{JoshConfig, load_config};
+use rustc_josh_sync::josh::{JoshProxy, try_install_josh};
+use rustc_josh_sync::sync::{GitSync, RustcPullError, UPSTREAM_REPO};
+use rustc_josh_sync::utils::prompt;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_CONFIG_PATH: &str = "josh-sync.toml";
