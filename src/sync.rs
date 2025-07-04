@@ -86,7 +86,11 @@ impl GitSync {
         // We pass `--no-verify` to avoid running git hooks.
         // We do this before the merge so that if there are merge conflicts, we have
         // the right rust-version file while resolving them.
-        std::fs::write(&self.context.last_upstream_sha_path, &upstream_sha).with_context(|| {
+        std::fs::write(
+            &self.context.last_upstream_sha_path,
+            &format!("{upstream_sha}\n"),
+        )
+        .with_context(|| {
             anyhow::anyhow!(
                 "cannot write upstream SHA to {}",
                 self.context.last_upstream_sha_path.display()
@@ -143,10 +147,12 @@ This updates the rust-version file to {upstream_sha}."#,
         let merge_message = format!(
             r#"Merge ref '{upstream_head_short}' from {UPSTREAM_REPO}
 
-Pull recent changes from {UPSTREAM_REPO} via Josh.
+Pull recent changes from https://github.com/{UPSTREAM_REPO} via Josh.
 
 Upstream ref: {upstream_sha}
 Filtered ref: {incoming_ref}
+
+This merge was created using https://github.com/rust-lang/josh-sync.
 "#,
             upstream_head_short = &upstream_sha[..12],
         );
