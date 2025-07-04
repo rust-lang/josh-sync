@@ -152,7 +152,7 @@ fn load_context(config_path: &Path, rust_version_path: &Path) -> anyhow::Result<
 fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Result<bool> {
     if which::which("gh").is_ok()
         && prompt(
-            "Do you want to create a rustc pull PR using the `gh` tool?",
+            &format!("Do you want to create a {repo} pull PR using the `gh` tool?"),
             false,
         )
     {
