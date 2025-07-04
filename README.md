@@ -1,6 +1,6 @@
 # Josh sync utilities
 This repository contains a binary utility for performing [Josh](https://github.com/josh-project/josh)
-synchronizations (pull and push) of Josh subtrees in the [rust-lang/rust](https://github.com/rust-lang/rust) repository.
+synchronizations (pull and push) of Josh subtrees in the [rust-lang/rust] repository.
 
 ## Installation
 You can install the binary `rustc-josh-sync` tool using the following command:
@@ -34,11 +34,11 @@ A push operation takes changes performed in the subtree repository and merges th
 1) Checkout the latest default branch of the subtree
 2) Run `rustc-josh-sync pull <your-github-username> <branch>`
     - The branch with the push contents will be created in `https://github.com/<your-github-username>/rust` fork, in the `<branch>` branch.
-3) Send a PR to `rustc`
+3) Send a PR to [rust-lang/rust]
 
-## Git pecularities
+## Git peculiarities
 
-NOTE: If you use Git/SSH protocol to push to your fork of `rust-lang/rust`,
+NOTE: If you use Git/SSH protocol to push to your fork of [rust-lang/rust],
 ensure that you have this entry in your Git config,
 else the 2 steps that follow would prompt for a username and password:
 
@@ -58,3 +58,6 @@ To minimize the likelihood of this happening, you may wish to keep a separate *m
 ```
 GIT_CONFIG_GLOBAL=/path/to/minimal/gitconfig GIT_CONFIG_SYSTEM='' rustc-josh-sync ...
 ```
+
+
+[rust-lang/rust]: (https://github.com/rust-lang/rust)
