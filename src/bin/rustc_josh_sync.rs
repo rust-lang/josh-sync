@@ -109,10 +109,19 @@ fn main() -> anyhow::Result<()> {
                 .context("cannot perform push")?;
 
             // Open PR with `subtree update` title to silence the `no-merges` triagebot check
+            let merge_msg = format!(
+                r#"Subtree update of https://github.com/{}.
+
+Created using https://github.com/rust-lang/josh-sync.
+
+r? @ghost"#,
+                ctx.config.full_repo_name(),
+            );
             println!(
                 r#"You can create the rustc PR using the following URL:
-https://github.com/{UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}+subtree+update&body=r?+@ghost"#,
-                ctx.config.repo
+https://github.com/{UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}+subtree+update&body={}"#,
+                ctx.config.repo,
+                urlencoding::encode(&merge_msg)
             );
         }
     }
