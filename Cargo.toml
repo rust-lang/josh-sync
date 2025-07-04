@@ -13,6 +13,7 @@ clap = { version = "4", features = ["derive"] }
 directories = "6"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
+urlencoding = "2"
 which = "8"
 
 [profile.release]

@@ -4,7 +4,7 @@ use rustc_josh_sync::SyncContext;
 use rustc_josh_sync::config::{JoshConfig, load_config};
 use rustc_josh_sync::josh::{JoshProxy, try_install_josh};
 use rustc_josh_sync::sync::{GitSync, RustcPullError, UPSTREAM_REPO};
-use rustc_josh_sync::utils::prompt;
+use rustc_josh_sync::utils::{get_current_head_sha, prompt};
 use std::path::{Path, PathBuf};
 
 const DEFAULT_CONFIG_PATH: &str = "josh-sync.toml";
@@ -109,10 +109,24 @@ fn main() -> anyhow::Result<()> {
                 .context("cannot perform push")?;
 
             // Open PR with `subtree update` title to silence the `no-merges` triagebot check
+            let title = format!("{} subtree update", ctx.config.repo);
+            let head = get_current_head_sha()?;
+
+            let merge_msg = format!(
+                r#"Subtree update of `{repo}` to https://github.com/{full_repo}/commit/{head}.
+
+Created using https://github.com/rust-lang/josh-sync.
+
+r? @ghost"#,
+                repo = ctx.config.repo,
+                full_repo = ctx.config.full_repo_name(),
+            );
+
             println!(
                 r#"You can create the rustc PR using the following URL:
-https://github.com/{UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}+subtree+update&body=r?+@ghost"#,
-                ctx.config.repo
+https://github.com/{UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}&body={}"#,
+                urlencoding::encode(&title),
+                urlencoding::encode(&merge_msg)
             );
         }
     }

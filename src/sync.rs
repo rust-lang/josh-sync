@@ -1,7 +1,7 @@
 use crate::SyncContext;
 use crate::josh::JoshProxy;
-use crate::utils::run_command_at;
 use crate::utils::{ensure_clean_git_state, prompt};
+use crate::utils::{get_current_head_sha, run_command_at};
 use crate::utils::{run_command, stream_command};
 use anyhow::{Context, Error};
 use std::path::{Path, PathBuf};
@@ -64,7 +64,7 @@ impl GitSync {
             &self.context.config.construct_josh_filter(),
         );
 
-        let orig_head = run_command(["git", "rev-parse", "HEAD"])?;
+        let orig_head = get_current_head_sha()?;
         println!(
             "previous upstream base: {:?}",
             self.context.last_upstream_sha
@@ -137,8 +137,7 @@ This updates the rust-version file to {upstream_sha}."#,
         };
         let num_roots_before = num_roots()?;
 
-        let sha =
-            run_command(&["git", "rev-parse", "HEAD"]).context("failed to get current commit")?;
+        let sha = get_current_head_sha()?;
 
         // The filtered SHA of upstream
         let incoming_ref = run_command(["git", "rev-parse", "FETCH_HEAD"])?;
@@ -170,8 +169,7 @@ This merge was created using https://github.com/rust-lang/josh-sync.
         ])
         .context("FAILED to merge new commits, something went wrong")?;
 
-        let current_sha =
-            run_command(&["git", "rev-parse", "HEAD"]).context("FAILED to get current commit")?;
+        let current_sha = get_current_head_sha()?;
         if current_sha == sha {
             eprintln!(
                 "No merge was performed, no changes to pull were found. Rolling back the preparation commit."
@@ -261,7 +259,7 @@ This merge was created using https://github.com/rust-lang/josh-sync.
             &["git", "fetch", &josh_url, &branch],
             &std::env::current_dir().unwrap(),
         )?;
-        let head = run_command(&["git", "rev-parse", "HEAD"])?;
+        let head = get_current_head_sha()?;
         let fetch_head = run_command(&["git", "rev-parse", "FETCH_HEAD"])?;
         if head != fetch_head {
             return Err(anyhow::anyhow!(
