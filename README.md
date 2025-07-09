@@ -36,6 +36,40 @@ A push operation takes changes performed in the subtree repository and merges th
     - The branch with the push contents will be created in `https://github.com/<your-github-username>/rust` fork, in the `<branch>` branch.
 3) Send a PR to [rust-lang/rust]
 
+## Automating pulls on CI
+
+This repository contains a reusable workflow for performing the `pull` operation from CI. The workflow does the following:
+
+1) Installs `rustc-josh-sync` and `josh`
+2) Performs a `pull` operation
+3) Either creates a new PR (if it did not exist) with the resulting pull branch or force-pushes to an existing PR on the subtree repository
+4) (optional) If a failure (usually a merge conflict) has happened, or a PR has been opened for more than a week without a merge, it posts a message to a Zulip stream
+
+Here is an example of how you can use the workflow in a subtree repository:
+
+```yaml
+name: rustc-pull
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run at 04:00 UTC every Monday and Thursday
+    - cron: '0 4 * * 1,4'
+
+jobs:
+  pull:
+    uses: rust-lang/josh-sync/.github/workflows/rustc-pull.yml@master
+    with:
+      # If you want the Zulip post functionality
+      #zulip-stream-id: 1234   # optional
+      #zulip-bot-email: subtree-gha-notif-bot@rust-lang.zulipchat.com # optional
+      pr-base-branch: master   # optional
+      branch-name: rustc-pull  # optional
+    secrets:
+      #zulip-api-token: <Zulip API TOKEN>     # optional
+      token: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ## Git peculiarities
 
 NOTE: If you use Git/SSH protocol to push to your fork of [rust-lang/rust],
@@ -58,6 +92,5 @@ To minimize the likelihood of this happening, you may wish to keep a separate *m
 ```
 GIT_CONFIG_GLOBAL=/path/to/minimal/gitconfig GIT_CONFIG_SYSTEM='' rustc-josh-sync ...
 ```
-
 
 [rust-lang/rust]: (https://github.com/rust-lang/rust)
