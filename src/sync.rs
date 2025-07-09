@@ -137,7 +137,7 @@ This updates the rust-version file to {upstream_sha}."#,
         };
         let num_roots_before = num_roots()?;
 
-        let sha = get_current_head_sha()?;
+        let sha_pre_merge = get_current_head_sha()?;
 
         // The filtered SHA of upstream
         let incoming_ref = run_command(["git", "rev-parse", "FETCH_HEAD"])?;
@@ -169,11 +169,23 @@ This merge was created using https://github.com/rust-lang/josh-sync.
         ])
         .context("FAILED to merge new commits, something went wrong")?;
 
+        // Now detect if something has actually been pulled
         let current_sha = get_current_head_sha()?;
-        if current_sha == sha {
+
+        // This is the easy case, no merge was performed, so we bail
+        if current_sha == sha_pre_merge {
             eprintln!(
                 "No merge was performed, no changes to pull were found. Rolling back the preparation commit."
             );
+            return Err(RustcPullError::NothingToPull);
+        }
+
+        // But it can be more tricky - we can have only empty merge/rollup merge commits from
+        // rustc, so a merge was created, but the in-tree diff can still be empty.
+        // In that case we also bail.
+        // `git diff --exit-code` "succeeds" if the diff is empty.
+        if run_command(&["git", "diff", "--exit-code", &sha_pre_merge]).is_ok() {
+            eprintln!("Only empty changes were pulled. Rolling back the preparation commit.");
             return Err(RustcPullError::NothingToPull);
         }
 
