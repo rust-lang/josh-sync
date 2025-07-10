@@ -1,0 +1,146 @@
+name: 'Josh Subtree Sync'
+
+on:
+  workflow_call:
+    inputs:
+      branch-name:
+        description: 'Name of the branch to create for the sync'
+        required: false
+        default: rustc-pull
+        type: string
+      pr-base-branch:
+        description: 'Base branch for the pull request'
+        required: false
+        type: string
+        default: 'master'
+      zulip-stream-id:
+        description: 'Zulip stream ID for notifications'
+        required: false
+        type: string
+      zulip-topic:
+        description: 'Zulip topic for notifications'
+        required: false
+        type: string
+        default: 'Subtree sync automation'
+      zulip-bot-email:
+        description: 'Zulip bot email address'
+        required: false
+        type: string
+    secrets:
+      token:
+        description: 'GITHUB_TOKEN from the caller workflow'
+        required: true
+      zulip-api-token:
+        description: 'Zulip API token for authentication'
+        required: false
+
+jobs:
+  perform-pull:
+    runs-on: ubuntu-latest
+    outputs:
+      pr_url: ${{ steps.update-pr.outputs.pr_url }}
+      pull_result: ${{ steps.josh-sync.outputs.pull_result }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
+
+      - name: Install stable Rust toolchain
+        run: rustup update stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: "/home/runner/.cache/rustc-josh"
+
+      - name: Setup bot git name and email
+        run: |
+          git config --global user.name 'The rustc-josh-sync Cronjob Bot'
+          git config --global user.email 'github-actions@github.com'
+
+      - name: Install rustc-josh-sync
+        run: cargo install --locked --git https://github.com/rust-lang/josh-sync
+
+      - name: Perform josh sync
+        id: josh-sync
+        shell: bash {0}
+        run: |
+          rustc-josh-sync pull
+          exitcode=$?
+
+          if [ $exitcode -eq 0 ]; then
+            echo "pull_result=pull-finished" >> $GITHUB_OUTPUT
+          elif [ $exitcode -eq 2 ]; then
+            echo "pull_result=skipped" >> $GITHUB_OUTPUT
+            exitcode=0
+          else
+            echo "pull_result=failed" >> $GITHUB_OUTPUT
+          fi
+
+          exit ${exitcode}
+
+      - name: Push changes to a branch
+        if: ${{ steps.josh-sync.outputs.pull_result == 'pull-finished' }}
+        run: |
+          BRANCH="${{ inputs.branch-name }}"
+          git switch -c $BRANCH
+          git push -u origin $BRANCH --force
+
+      - name: Create pull request
+        id: update-pr
+        if: ${{ steps.josh-sync.outputs.pull_result == 'pull-finished' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.token }}
+        run: |
+          # Check if an open pull request already exists
+          RESULT=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | length' --json title`
+          if [[ "$RESULT" -eq 0 ]]; then
+            echo "Creating new pull request"
+            PR_URL=`gh pr create -B ${{ inputs.pr-base-branch }} --title 'Rustc pull update' --body 'Latest update from rustc.'`
+            echo "Created pull request ${PR_URL}"
+            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          else
+            PR_URL=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | .[0].url' --json url,title`
+            echo "Updating pull request ${PR_URL}"
+            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          fi
+
+  send-zulip-notification:
+    needs: [ perform-pull ]
+    if: ${{ !cancelled() && inputs.zulip-stream-id != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute message
+        id: create-message
+        env:
+          GITHUB_TOKEN: ${{ secrets.token }}
+        run: |
+          if [ "${{ needs.perform-pull.result }}" == "failure" ]; then
+            WORKFLOW_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "message=Josh subtree sync failed. Check out the [workflow URL]($WORKFLOW_URL)." >> $GITHUB_OUTPUT
+          else
+            CREATED_AT=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | .[0].createdAt' --json createdAt,title`
+            PR_URL=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | .[0].url' --json url,title`
+            week_ago=$(date +%F -d '7 days ago')
+
+            # If there is an open PR that is at least a week old, post a message about it
+            if [[ -n $CREATED_AT && $CREATED_AT < $week_ago ]]; then
+              echo "message=A PR with a josh subtree sync has been opened for more than a week. Check out the [PR](${PR_URL})." >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Send Zulip message
+        if: ${{ steps.create-message.outputs.message != '' }}
+        uses: zulip/github-actions-zulip/send-message@e4c8f27c732ba9bd98ac6be0583096dea82feea5
+        with:
+          api-key: ${{ secrets.zulip-api-token }}
+          email: ${{ secrets.zulip-bot-email }}
+          organization-url: "https://rust-lang.zulipchat.com"
+          to: ${{ inputs.zulip-stream-id }}
+          type: "stream"
+          topic: ${{ inputs.zulip-topic }}
+          content: ${{ steps.create-message.outputs.message }}
