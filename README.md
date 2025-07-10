@@ -58,7 +58,7 @@ on:
 
 jobs:
   pull:
-    uses: rust-lang/josh-sync/.github/workflows/rustc-pull.yml@master
+    uses: rust-lang/josh-sync/.github/workflows/rustc-pull.yml@main
     with:
       # If you want the Zulip post functionality
       #zulip-stream-id: 1234   # optional
