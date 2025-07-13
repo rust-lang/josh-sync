@@ -6,7 +6,7 @@ use crate::utils::{run_command, stream_command};
 use anyhow::{Context, Error};
 use std::path::{Path, PathBuf};
 
-pub const UPSTREAM_REPO: &str = "rust-lang/rust";
+pub const DEFAULT_UPSTREAM_REPO: &str = "rust-lang/rust";
 
 pub enum RustcPullError {
     /// No changes are available to be pulled.
@@ -35,13 +35,13 @@ impl GitSync {
         Self { context, proxy }
     }
 
-    pub fn rustc_pull(&self) -> Result<PullResult, RustcPullError> {
+    pub fn rustc_pull(&self, upstream_repo: String) -> Result<PullResult, RustcPullError> {
         // The upstream commit that we want to pull
         let upstream_sha = {
             let out = run_command([
                 "git",
                 "ls-remote",
-                &format!("https://github.com/{UPSTREAM_REPO}"),
+                &format!("https://github.com/{upstream_repo}"),
                 "HEAD",
             ])
             .context("cannot fetch upstream commit")?;
@@ -59,7 +59,7 @@ impl GitSync {
             .start(&self.context.config)
             .context("cannot start josh-proxy")?;
         let josh_url = josh.git_url(
-            UPSTREAM_REPO,
+            &upstream_repo,
             Some(&upstream_sha),
             &self.context.config.construct_josh_filter(),
         );
@@ -98,7 +98,7 @@ impl GitSync {
         })?;
 
         let prep_message = format!(
-            r#"Prepare for merging from {UPSTREAM_REPO}
+            r#"Prepare for merging from {upstream_repo}
 
 This updates the rust-version file to {upstream_sha}."#,
         );
@@ -144,9 +144,9 @@ This updates the rust-version file to {upstream_sha}."#,
         println!("incoming ref: {incoming_ref}");
 
         let merge_message = format!(
-            r#"Merge ref '{upstream_head_short}' from {UPSTREAM_REPO}
+            r#"Merge ref '{upstream_head_short}' from {upstream_repo}
 
-Pull recent changes from https://github.com/{UPSTREAM_REPO} via Josh.
+Pull recent changes from https://github.com/{upstream_repo} via Josh.
 
 Upstream ref: {upstream_sha}
 Filtered ref: {incoming_ref}
@@ -241,7 +241,7 @@ This merge was created using https://github.com/rust-lang/josh-sync.
             &[
                 "git",
                 "fetch",
-                &format!("https://github.com/{UPSTREAM_REPO}"),
+                &format!("https://github.com/{DEFAULT_UPSTREAM_REPO}"),
                 &base_upstream_sha,
             ],
             &rustc_git,
