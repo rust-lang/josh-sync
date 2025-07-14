@@ -3,7 +3,7 @@ use clap::Parser;
 use rustc_josh_sync::SyncContext;
 use rustc_josh_sync::config::{JoshConfig, load_config};
 use rustc_josh_sync::josh::{JoshProxy, try_install_josh};
-use rustc_josh_sync::sync::{GitSync, RustcPullError, UPSTREAM_REPO};
+use rustc_josh_sync::sync::{DEFAULT_UPSTREAM_REPO, GitSync, RustcPullError};
 use rustc_josh_sync::utils::{get_current_head_sha, prompt};
 use std::path::{Path, PathBuf};
 
@@ -23,6 +23,11 @@ enum Command {
     /// Pull changes from the main `rust-lang/rust` repository.
     /// This creates new commits that should be then merged into this subtree repository.
     Pull {
+        /// Override the upstream repository from which we pull changes.
+        /// Can be used to perform experimental pulls e.g. to test changes in the subtree repository
+        /// that have not yet been merged in `rust-lang/rust`.
+        #[clap(long, default_value(DEFAULT_UPSTREAM_REPO))]
+        upstream: String,
         #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
         config_path: PathBuf,
         #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
@@ -69,11 +74,12 @@ fn main() -> anyhow::Result<()> {
         Command::Pull {
             config_path,
             rust_version_path,
+            upstream,
         } => {
             let ctx = load_context(&config_path, &rust_version_path)?;
             let josh = get_josh_proxy()?;
             let sync = GitSync::new(ctx.clone(), josh);
-            match sync.rustc_pull() {
+            match sync.rustc_pull(upstream) {
                 Ok(result) => {
                     if !maybe_create_gh_pr(
                         &ctx.config.full_repo_name(),
@@ -124,7 +130,7 @@ r? @ghost"#,
 
             println!(
                 r#"You can create the rustc PR using the following URL:
-https://github.com/{UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}&body={}"#,
+https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}&body={}"#,
                 urlencoding::encode(&title),
                 urlencoding::encode(&merge_msg)
             );
