@@ -41,6 +41,11 @@ enum Command {
         /// By default, josh-sync will pull from rustc's HEAD (latest commit).
         #[clap(long)]
         upstream_commit: Option<String>,
+
+        /// By default, the `pull` command will exit with status code 2 if there is nothing to pull.
+        /// If you instead want to exit successfully in that case, pass this flag.
+        #[clap(long)]
+        allow_noop: bool,
     },
     /// Push changes into the main `rust-lang/rust` repository `branch` of a `rustc` fork under
     /// the given GitHub `username`.
@@ -90,6 +95,7 @@ fn main() -> anyhow::Result<()> {
             rust_version_path,
             upstream_repo,
             upstream_commit,
+            allow_noop,
         } => {
             let ctx = load_context(&config_path, &rust_version_path)?;
             let josh = get_josh_proxy()?;
@@ -109,7 +115,9 @@ fn main() -> anyhow::Result<()> {
                 }
                 Err(RustcPullError::NothingToPull) => {
                     eprintln!("Nothing to pull");
-                    std::process::exit(2);
+                    if !allow_noop {
+                        std::process::exit(2);
+                    }
                 }
                 Err(RustcPullError::PullFailed(error)) => {
                     eprintln!("Pull failure: {error:?}");
