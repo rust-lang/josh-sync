@@ -27,22 +27,36 @@ enum Command {
         /// Can be used to perform experimental pulls e.g. to test changes in the subtree repository
         /// that have not yet been merged in `rust-lang/rust`.
         #[clap(long, default_value(DEFAULT_UPSTREAM_REPO))]
-        upstream: String,
+        upstream_repo: String,
+
+        /// Path to the josh-sync TOML config file.
         #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
         config_path: PathBuf,
+
+        /// Path to a file storing the last synchronized rustc commit.
         #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
         rust_version_path: PathBuf,
+
+        /// Override the rustc commit that we should pull from.
+        /// By default, josh-sync will pull from rustc's HEAD (latest commit).
+        #[clap(long)]
+        upstream_commit: Option<String>,
     },
     /// Push changes into the main `rust-lang/rust` repository `branch` of a `rustc` fork under
     /// the given GitHub `username`.
     /// The pushed branch should then be merged into the `rustc` repository.
     Push {
+        /// Path to the josh-sync TOML config file.
         #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
         config_path: PathBuf,
+
+        /// Path to a file storing the last synchronized rustc commit.
         #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
         rust_version_path: PathBuf,
+
         /// Branch that should be pushed to your remote
         branch: String,
+
         /// Your GitHub usename where the fork is located
         username: String,
     },
@@ -74,12 +88,13 @@ fn main() -> anyhow::Result<()> {
         Command::Pull {
             config_path,
             rust_version_path,
-            upstream,
+            upstream_repo,
+            upstream_commit,
         } => {
             let ctx = load_context(&config_path, &rust_version_path)?;
             let josh = get_josh_proxy()?;
             let sync = GitSync::new(ctx.clone(), josh);
-            match sync.rustc_pull(upstream) {
+            match sync.rustc_pull(upstream_repo, upstream_commit) {
                 Ok(result) => {
                     if !maybe_create_gh_pr(
                         &ctx.config.full_repo_name(),
