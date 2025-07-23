@@ -35,9 +35,15 @@ impl GitSync {
         Self { context, proxy }
     }
 
-    pub fn rustc_pull(&self, upstream_repo: String) -> Result<PullResult, RustcPullError> {
+    pub fn rustc_pull(
+        &self,
+        upstream_repo: String,
+        upstream_commit: Option<String>,
+    ) -> Result<PullResult, RustcPullError> {
         // The upstream commit that we want to pull
-        let upstream_sha = {
+        let upstream_sha = if let Some(sha) = upstream_commit {
+            sha
+        } else {
             let out = run_command([
                 "git",
                 "ls-remote",
