@@ -3,6 +3,10 @@ name: 'Josh Subtree Sync'
 on:
   workflow_call:
     inputs:
+      github-app-id:
+        description: 'ID of a GitHub app that will create the sync PR'
+        required: true
+        type: string
       branch-name:
         description: 'Name of the branch to create for the sync'
         required: false
@@ -27,8 +31,8 @@ on:
         required: false
         type: string
     secrets:
-      token:
-        description: 'GITHUB_TOKEN from the caller workflow'
+      github-app-secret:
+        description: 'Secret for a GitHub app that will create the sync PR'
         required: true
       zulip-api-token:
         description: 'Zulip API token for authentication'
@@ -81,6 +85,12 @@ jobs:
 
           exit ${exitcode}
 
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ inputs.github-app-id }}
+          private-key: ${{ secrets.github-app-secret }}
+
       - name: Push changes to a branch
         if: ${{ steps.josh-sync.outputs.pull_result == 'pull-finished' }}
         run: |
@@ -92,7 +102,7 @@ jobs:
         id: update-pr
         if: ${{ steps.josh-sync.outputs.pull_result == 'pull-finished' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Check if an open pull request already exists
           RESULT=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | length' --json title`
@@ -114,10 +124,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ inputs.github-app-id }}
+          private-key: ${{ secrets.github-app-secret }}
+
       - name: Compute message
         id: create-message
         env:
-          GITHUB_TOKEN: ${{ secrets.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if [ "${{ needs.perform-pull.result }}" == "failure" ]; then
             WORKFLOW_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
