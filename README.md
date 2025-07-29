@@ -60,6 +60,7 @@ jobs:
   pull:
     uses: rust-lang/josh-sync/.github/workflows/rustc-pull.yml@main
     with:
+      github-app-id: ${{ vars.APP_CLIENT_ID }}
       # If you want the Zulip post functionality
       #zulip-stream-id: 1234   # optional
       #zulip-bot-email: subtree-gha-notif-bot@rust-lang.zulipchat.com # optional
@@ -67,8 +68,10 @@ jobs:
       branch-name: rustc-pull  # optional
     secrets:
       #zulip-api-token: <Zulip API TOKEN>     # optional
-      token: ${{ secrets.GITHUB_TOKEN }}
+      github-app-secret: ${{ secrets.APP_PRIVATE_KEY }}
 ```
+
+You will need to have a GitHub app configured on the repository with permissions to create pull requests in order to use the workflow.
 
 ## Git peculiarities
 
