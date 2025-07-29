@@ -177,7 +177,7 @@ This merge was created using https://github.com/rust-lang/josh-sync.
 
         // Merge the fetched commit.
         // It is useful to print stdout/stderr here, because it shows the git diff summary
-        stream_command(
+        if let Err(error) = stream_command(
             &[
                 "git",
                 "merge",
@@ -189,7 +189,16 @@ This merge was created using https://github.com/rust-lang/josh-sync.
             ],
             self.verbose,
         )
-        .context("FAILED to merge new commits, something went wrong")?;
+        .context("FAILED to merge new commits, something went wrong")
+        {
+            eprintln!(
+                r"The merge was unsuccessful (maybe there was a conflict?).
+NOT rolling back the branch state, so you can examine it manually.
+After you fix the conflicts, `git add` the changes and run `git merge --continue`."
+            );
+            git_reset.disarm();
+            return Err(RustcPullError::PullFailed(error));
+        }
 
         // Now detect if something has actually been pulled
         let current_sha = get_current_head_sha(self.verbose)?;
