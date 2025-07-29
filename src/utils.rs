@@ -3,27 +3,32 @@ use std::path::Path;
 use std::process::Command;
 
 /// Run command and return its stdout.
-pub fn run_command<'a, Args: AsRef<[&'a str]>>(args: Args) -> anyhow::Result<String> {
-    run_command_at(args, &std::env::current_dir()?)
+pub fn run_command<'a, Args: AsRef<[&'a str]>>(
+    args: Args,
+    verbose: bool,
+) -> anyhow::Result<String> {
+    run_command_at(args, &std::env::current_dir()?, verbose)
 }
 
 /// Run command while streaming stdout and stderr to the terminal.
-pub fn stream_command<'a, Args: AsRef<[&'a str]>>(args: Args) -> anyhow::Result<()> {
-    run_command_inner(args, &std::env::current_dir()?, false)?;
+pub fn stream_command<'a, Args: AsRef<[&'a str]>>(args: Args, verbose: bool) -> anyhow::Result<()> {
+    run_command_inner(args, &std::env::current_dir()?, false, verbose)?;
     Ok(())
 }
 
 pub fn run_command_at<'a, Args: AsRef<[&'a str]>>(
     args: Args,
     workdir: &Path,
+    verbose: bool,
 ) -> anyhow::Result<String> {
-    run_command_inner(args, workdir, true)
+    run_command_inner(args, workdir, true, verbose)
 }
 
 fn run_command_inner<'a, Args: AsRef<[&'a str]>>(
     args: Args,
     workdir: &Path,
     capture: bool,
+    verbose: bool,
 ) -> anyhow::Result<String> {
     let args = args.as_ref();
 
@@ -31,7 +36,9 @@ fn run_command_inner<'a, Args: AsRef<[&'a str]>>(
     cmd.current_dir(workdir);
     cmd.args(&args[1..]);
 
-    eprintln!("+ {cmd:?}");
+    if verbose {
+        eprintln!("+ {cmd:?}");
+    }
     if capture {
         let out = cmd.output().expect("command failed");
         let stdout = String::from_utf8_lossy(out.stdout.trim_ascii()).to_string();
@@ -62,14 +69,17 @@ fn run_command_inner<'a, Args: AsRef<[&'a str]>>(
 }
 
 /// Fail if there are files that need to be checked in.
-pub fn ensure_clean_git_state() {
-    let read = run_command(["git", "status", "--untracked-files=no", "--porcelain"])
-        .expect("cannot figure out if git state is clean");
+pub fn ensure_clean_git_state(verbose: bool) {
+    let read = run_command(
+        ["git", "status", "--untracked-files=no", "--porcelain"],
+        verbose,
+    )
+    .expect("cannot figure out if git state is clean");
     assert!(read.is_empty(), "working directory must be clean");
 }
 
-pub fn get_current_head_sha() -> anyhow::Result<String> {
-    run_command(&["git", "rev-parse", "HEAD"]).context("failed to get current commit")
+pub fn get_current_head_sha(verbose: bool) -> anyhow::Result<String> {
+    run_command(&["git", "rev-parse", "HEAD"], verbose).context("failed to get current commit")
 }
 
 /// Ask a prompt to user and return true if they responded with `y`.

@@ -28,11 +28,16 @@ pub struct PullResult {
 pub struct GitSync {
     context: SyncContext,
     proxy: JoshProxy,
+    verbose: bool,
 }
 
 impl GitSync {
-    pub fn new(context: SyncContext, proxy: JoshProxy) -> Self {
-        Self { context, proxy }
+    pub fn new(context: SyncContext, proxy: JoshProxy, verbose: bool) -> Self {
+        Self {
+            context,
+            proxy,
+            verbose,
+        }
     }
 
     pub fn rustc_pull(
@@ -44,12 +49,15 @@ impl GitSync {
         let upstream_sha = if let Some(sha) = upstream_commit {
             sha
         } else {
-            let out = run_command([
-                "git",
-                "ls-remote",
-                &format!("https://github.com/{upstream_repo}"),
-                "HEAD",
-            ])
+            let out = run_command(
+                [
+                    "git",
+                    "ls-remote",
+                    &format!("https://github.com/{upstream_repo}"),
+                    "HEAD",
+                ],
+                self.verbose,
+            )
             .context("cannot fetch upstream commit")?;
             out.split_whitespace()
                 .next()
@@ -57,7 +65,7 @@ impl GitSync {
                 .to_owned()
         };
 
-        ensure_clean_git_state();
+        ensure_clean_git_state(self.verbose);
 
         // Make sure josh is running.
         let josh = self
@@ -70,7 +78,7 @@ impl GitSync {
             &self.context.config.construct_josh_filter(),
         );
 
-        let orig_head = get_current_head_sha()?;
+        let orig_head = get_current_head_sha(self.verbose)?;
         println!(
             "previous upstream base: {:?}",
             self.context.last_upstream_sha
@@ -116,37 +124,42 @@ This updates the rust-version file to {upstream_sha}."#,
             .to_string();
         // Add the file to git index, in case this is the first time we perform the sync
         // Otherwise `git commit <file>` below wouldn't work.
-        run_command(&["git", "add", &rust_version_path])?;
-        run_command(&[
-            "git",
-            "commit",
-            &rust_version_path,
-            "--no-verify",
-            "-m",
-            &prep_message,
-        ])
+        run_command(&["git", "add", &rust_version_path], self.verbose)?;
+        run_command(
+            &[
+                "git",
+                "commit",
+                &rust_version_path,
+                "--no-verify",
+                "-m",
+                &prep_message,
+            ],
+            self.verbose,
+        )
         .context("cannot create preparation commit")?;
 
         // Make sure that we reset the above commit if something fails
-        let mut git_reset = GitResetOnDrop::new(orig_head);
+        let mut git_reset = GitResetOnDrop::new(orig_head, self.verbose);
 
         // Fetch given rustc commit.
-        run_command(&["git", "fetch", &josh_url]).context("cannot fetch git state through Josh")?;
+        run_command(&["git", "fetch", &josh_url], self.verbose)
+            .context("cannot fetch git state through Josh")?;
 
         // This should not add any new root commits. So count those before and after merging.
         let num_roots = || -> anyhow::Result<u32> {
-            Ok(
-                run_command(&["git", "rev-list", "HEAD", "--max-parents=0", "--count"])
-                    .context("failed to determine the number of root commits")?
-                    .parse::<u32>()?,
+            Ok(run_command(
+                &["git", "rev-list", "HEAD", "--max-parents=0", "--count"],
+                self.verbose,
             )
+            .context("failed to determine the number of root commits")?
+            .parse::<u32>()?)
         };
         let num_roots_before = num_roots()?;
 
-        let sha_pre_merge = get_current_head_sha()?;
+        let sha_pre_merge = get_current_head_sha(self.verbose)?;
 
         // The filtered SHA of upstream
-        let incoming_ref = run_command(["git", "rev-parse", "FETCH_HEAD"])?;
+        let incoming_ref = run_command(["git", "rev-parse", "FETCH_HEAD"], self.verbose)?;
         println!("incoming ref: {incoming_ref}");
 
         let merge_message = format!(
@@ -164,19 +177,22 @@ This merge was created using https://github.com/rust-lang/josh-sync.
 
         // Merge the fetched commit.
         // It is useful to print stdout/stderr here, because it shows the git diff summary
-        stream_command(&[
-            "git",
-            "merge",
-            "FETCH_HEAD",
-            "--no-verify",
-            "--no-ff",
-            "-m",
-            &merge_message,
-        ])
+        stream_command(
+            &[
+                "git",
+                "merge",
+                "FETCH_HEAD",
+                "--no-verify",
+                "--no-ff",
+                "-m",
+                &merge_message,
+            ],
+            self.verbose,
+        )
         .context("FAILED to merge new commits, something went wrong")?;
 
         // Now detect if something has actually been pulled
-        let current_sha = get_current_head_sha()?;
+        let current_sha = get_current_head_sha(self.verbose)?;
 
         // This is the easy case, no merge was performed, so we bail
         if current_sha == sha_pre_merge {
@@ -190,7 +206,12 @@ This merge was created using https://github.com/rust-lang/josh-sync.
         // rustc, so a merge was created, but the in-tree diff can still be empty.
         // In that case we also bail.
         // `git diff --exit-code` "succeeds" if the diff is empty.
-        if run_command(&["git", "diff", "--exit-code", &sha_pre_merge]).is_ok() {
+        if run_command(
+            &["git", "diff", "--exit-code", &sha_pre_merge],
+            self.verbose,
+        )
+        .is_ok()
+        {
             eprintln!("Only empty changes were pulled. Rolling back the preparation commit.");
             return Err(RustcPullError::NothingToPull);
         }
@@ -212,7 +233,7 @@ This merge was created using https://github.com/rust-lang/josh-sync.
     }
 
     pub fn rustc_push(&self, username: &str, branch: &str) -> anyhow::Result<()> {
-        ensure_clean_git_state();
+        ensure_clean_git_state(self.verbose);
 
         let base_upstream_sha = self.context.last_upstream_sha.clone().unwrap_or_default();
 
@@ -228,7 +249,8 @@ This merge was created using https://github.com/rust-lang/josh-sync.
         );
         let user_upstream_url = format!("https://github.com/{username}/rust");
 
-        let rustc_git = prepare_rustc_checkout().context("cannot prepare rustc checkout")?;
+        let rustc_git =
+            prepare_rustc_checkout(self.verbose).context("cannot prepare rustc checkout")?;
 
         // Prepare the branch. Pushing works much better if we use as base exactly
         // the commit that we pulled from last time, so we use the `rust-version`
@@ -236,7 +258,13 @@ This merge was created using https://github.com/rust-lang/josh-sync.
         println!("Preparing {user_upstream_url} (base: {base_upstream_sha})...");
 
         // Check if the remote branch doesn't already exist
-        if run_command_at(&["git", "fetch", &user_upstream_url, branch], &rustc_git).is_ok() {
+        if run_command_at(
+            &["git", "fetch", &user_upstream_url, branch],
+            &rustc_git,
+            self.verbose,
+        )
+        .is_ok()
+        {
             return Err(anyhow::anyhow!(
                 "The branch '{branch}' seems to already exist in '{user_upstream_url}'. Please delete it and try again."
             ));
@@ -251,6 +279,7 @@ This merge was created using https://github.com/rust-lang/josh-sync.
                 &base_upstream_sha,
             ],
             &rustc_git,
+            self.verbose,
         )
         .context("cannot download latest upstream SHA")?;
 
@@ -263,22 +292,27 @@ This merge was created using https://github.com/rust-lang/josh-sync.
                 &format!("{base_upstream_sha}:refs/heads/{branch}"),
             ],
             &rustc_git,
+            self.verbose,
         )
         .context("cannot push to your fork")?;
         println!();
 
         // Do the actual push from the subtree git repo
         println!("Pushing changes...");
-        run_command(&["git", "push", &josh_url, &format!("HEAD:{branch}")])?;
+        run_command(
+            &["git", "push", &josh_url, &format!("HEAD:{branch}")],
+            self.verbose,
+        )?;
         println!();
 
         // Do a round-trip check to make sure the push worked as expected.
         run_command_at(
             &["git", "fetch", &josh_url, &branch],
             &std::env::current_dir().unwrap(),
+            self.verbose,
         )?;
-        let head = get_current_head_sha()?;
-        let fetch_head = run_command(&["git", "rev-parse", "FETCH_HEAD"])?;
+        let head = get_current_head_sha(self.verbose)?;
+        let fetch_head = run_command(&["git", "rev-parse", "FETCH_HEAD"], self.verbose)?;
         if head != fetch_head {
             return Err(anyhow::anyhow!(
                 "Josh created a non-roundtrip push! Do NOT merge this into rustc!\n\
@@ -295,7 +329,7 @@ This merge was created using https://github.com/rust-lang/josh-sync.
 }
 
 /// Find a rustc repo we can do our push preparation in.
-fn prepare_rustc_checkout() -> anyhow::Result<PathBuf> {
+fn prepare_rustc_checkout(verbose: bool) -> anyhow::Result<PathBuf> {
     if let Ok(rustc_git) = std::env::var("RUSTC_GIT") {
         let rustc_git = PathBuf::from(rustc_git);
         assert!(
@@ -319,13 +353,16 @@ fn prepare_rustc_checkout() -> anyhow::Result<PathBuf> {
                 "Cloning rustc into `{path}`. Use RUSTC_GIT environment variable to override the location of the checkout"
             );
             // Stream stdout/stderr to the terminal, so that the user sees clone progress
-            stream_command(&[
-                "git",
-                "clone",
-                "--filter=blob:none",
-                "https://github.com/rust-lang/rust",
-                path,
-            ])
+            stream_command(
+                &[
+                    "git",
+                    "clone",
+                    "--filter=blob:none",
+                    "https://github.com/rust-lang/rust",
+                    path,
+                ],
+                verbose,
+            )
             .context("cannot clone rustc")?;
         } else {
             return Err(anyhow::anyhow!("cannot continue without a rustc checkout"));
@@ -338,13 +375,15 @@ fn prepare_rustc_checkout() -> anyhow::Result<PathBuf> {
 struct GitResetOnDrop {
     disarmed: bool,
     reset_to: String,
+    verbose: bool,
 }
 
 impl GitResetOnDrop {
-    fn new(current_sha: String) -> Self {
+    fn new(current_sha: String, verbose: bool) -> Self {
         Self {
             disarmed: false,
             reset_to: current_sha,
+            verbose,
         }
     }
 
@@ -357,7 +396,7 @@ impl Drop for GitResetOnDrop {
     fn drop(&mut self) {
         if !self.disarmed {
             eprintln!("Reverting HEAD to {}", self.reset_to);
-            run_command(&["git", "reset", "--hard", &self.reset_to])
+            run_command(&["git", "reset", "--hard", &self.reset_to], self.verbose)
                 .expect(&format!("cannot reset current branch to {}", self.reset_to));
         }
     }

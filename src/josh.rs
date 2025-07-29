@@ -63,17 +63,20 @@ impl JoshProxy {
 }
 
 /// Try to install (or update) josh-proxy, to make sure that we use the correct version.
-pub fn try_install_josh() -> Option<JoshProxy> {
-    run_command(&[
-        "cargo",
-        "install",
-        "--locked",
-        "--git",
-        "https://github.com/josh-project/josh",
-        "--tag",
-        JOSH_VERSION,
-        "josh-proxy",
-    ])
+pub fn try_install_josh(verbose: bool) -> Option<JoshProxy> {
+    run_command(
+        &[
+            "cargo",
+            "install",
+            "--locked",
+            "--git",
+            "https://github.com/josh-project/josh",
+            "--tag",
+            JOSH_VERSION,
+            "josh-proxy",
+        ],
+        verbose,
+    )
     .expect("cannot install josh-proxy");
     JoshProxy::lookup()
 }
