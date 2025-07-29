@@ -46,6 +46,10 @@ enum Command {
         /// If you instead want to exit successfully in that case, pass this flag.
         #[clap(long)]
         allow_noop: bool,
+
+        /// Print executed commands.
+        #[clap(long, short = 'v')]
+        verbose: bool,
     },
     /// Push changes into the main `rust-lang/rust` repository `branch` of a `rustc` fork under
     /// the given GitHub `username`.
@@ -64,6 +68,10 @@ enum Command {
 
         /// Your GitHub usename where the fork is located
         username: String,
+
+        /// Print executed commands.
+        #[clap(long, short = 'v')]
+        verbose: bool,
     },
 }
 
@@ -91,6 +99,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Pull {
+            verbose,
             config_path,
             rust_version_path,
             upstream_repo,
@@ -98,8 +107,8 @@ fn main() -> anyhow::Result<()> {
             allow_noop,
         } => {
             let ctx = load_context(&config_path, &rust_version_path)?;
-            let josh = get_josh_proxy()?;
-            let sync = GitSync::new(ctx.clone(), josh);
+            let josh = get_josh_proxy(verbose)?;
+            let sync = GitSync::new(ctx.clone(), josh, verbose);
             match sync.rustc_pull(upstream_repo, upstream_commit) {
                 Ok(result) => {
                     if !maybe_create_gh_pr(
@@ -121,6 +130,9 @@ fn main() -> anyhow::Result<()> {
                 }
                 Err(RustcPullError::PullFailed(error)) => {
                     eprintln!("Pull failure: {error:?}");
+                    if !verbose {
+                        eprintln!("Rerun with `-v` to see executed commands");
+                    }
                     std::process::exit(1);
                 }
             }
@@ -130,16 +142,24 @@ fn main() -> anyhow::Result<()> {
             branch,
             config_path,
             rust_version_path,
+            verbose,
         } => {
             let ctx = load_context(&config_path, &rust_version_path)?;
-            let josh = get_josh_proxy()?;
-            let sync = GitSync::new(ctx.clone(), josh);
-            sync.rustc_push(&username, &branch)
-                .context("cannot perform push")?;
+            let josh = get_josh_proxy(verbose)?;
+            let sync = GitSync::new(ctx.clone(), josh, verbose);
+            if let Err(error) = sync
+                .rustc_push(&username, &branch)
+                .context("cannot perform push")
+            {
+                if !verbose {
+                    eprintln!("Rerun with `-v` to see executed commands");
+                }
+                return Err(error);
+            }
 
             // Open PR with `subtree update` title to silence the `no-merges` triagebot check
             let title = format!("{} subtree update", ctx.config.repo);
-            let head = get_current_head_sha()?;
+            let head = get_current_head_sha(verbose)?;
 
             let merge_msg = format!(
                 r#"Subtree update of `{repo}` to https://github.com/{full_repo}/commit/{head}.
@@ -204,9 +224,9 @@ fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Res
     }
 }
 
-fn get_josh_proxy() -> anyhow::Result<JoshProxy> {
+fn get_josh_proxy(verbose: bool) -> anyhow::Result<JoshProxy> {
     println!("Updating/installing josh-proxy binary...");
-    match try_install_josh() {
+    match try_install_josh(verbose) {
         Some(proxy) => Ok(proxy),
         None => Err(anyhow::anyhow!("Could not install josh-proxy")),
     }
