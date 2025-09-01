@@ -169,10 +169,16 @@ Pull recent changes from https://github.com/{upstream_repo} via Josh.
 
 Upstream ref: {upstream_sha}
 Filtered ref: {incoming_ref}
+Upstream diff: https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{prev_upstream_sha}...{upstream_sha}
 
 This merge was created using https://github.com/rust-lang/josh-sync.
 "#,
             upstream_head_short = &upstream_sha[..12],
+            prev_upstream_sha = self
+                .context
+                .last_upstream_sha
+                .as_deref()
+                .unwrap_or(&upstream_sha)
         );
 
         // Merge the fetched commit.
@@ -367,7 +373,7 @@ fn prepare_rustc_checkout(verbose: bool) -> anyhow::Result<PathBuf> {
                     "git",
                     "clone",
                     "--filter=blob:none",
-                    "https://github.com/rust-lang/rust",
+                    &format!("https://github.com/{DEFAULT_UPSTREAM_REPO}"),
                     path,
                 ],
                 verbose,
