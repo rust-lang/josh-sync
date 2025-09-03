@@ -32,7 +32,7 @@ A pull operation fetches changes to the subtree subdirectory that were performed
 A push operation takes changes performed in the subtree repository and merges them into the subtree subdirectory of the `rust-lang/rust` repository. After performing a push, a push request is sent against the *rustc repository*. We *push to rustc*.
 
 1) Checkout the latest default branch of the subtree
-2) Run `rustc-josh-sync push <your-github-username> <branch>`
+2) Run `rustc-josh-sync push <branch> <your-github-username>`
     - The branch with the push contents will be created in `https://github.com/<your-github-username>/rust` fork, in the `<branch>` branch.
 3) Send a PR to [rust-lang/rust]
 
