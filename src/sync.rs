@@ -1,4 +1,5 @@
 use crate::SyncContext;
+use crate::config::PostPullOperation;
 use crate::josh::JoshProxy;
 use crate::utils::{ensure_clean_git_state, prompt};
 use crate::utils::{get_current_head_sha, run_command_at};
@@ -220,15 +221,19 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         // But it can be more tricky - we can have only empty merge/rollup merge commits from
         // rustc, so a merge was created, but the in-tree diff can still be empty.
         // In that case we also bail.
-        // `git diff --exit-code` "succeeds" if the diff is empty.
-        if run_command(
-            &["git", "diff", "--exit-code", &sha_pre_merge],
-            self.verbose,
-        )
-        .is_ok()
-        {
+        if self.has_empty_diff(&sha_pre_merge) {
             eprintln!("Only empty changes were pulled. Rolling back the preparation commit.");
             return Err(RustcPullError::NothingToPull);
+        }
+
+        println!("Pull finished! Current HEAD is {current_sha}");
+
+        if !self.context.config.post_pull.is_empty() {
+            println!("Running post-pull operation(s)");
+
+            for op in &self.context.config.post_pull {
+                self.run_post_pull_op(&op)?;
+            }
         }
 
         git_reset.disarm();
@@ -241,7 +246,6 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
             .into());
         }
 
-        println!("Pull finished! Current HEAD is {current_sha}");
         Ok(PullResult {
             merge_commit_message: merge_message,
         })
@@ -338,6 +342,27 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
             "Confirmed that the push round-trips back to {} properly. Please create a rustc PR.",
             self.context.config.repo
         );
+
+        Ok(())
+    }
+
+    fn has_empty_diff(&self, baseline_sha: &str) -> bool {
+        // `git diff --exit-code` "succeeds" if the diff is empty.
+        run_command(&["git", "diff", "--exit-code", baseline_sha], self.verbose).is_ok()
+    }
+
+    fn run_post_pull_op(&self, op: &PostPullOperation) -> anyhow::Result<()> {
+        let head = get_current_head_sha(self.verbose)?;
+        run_command(op.cmd.iter().map(|s| s.as_str()).collect::<Vec<_>>(), true)?;
+        if !self.has_empty_diff(&head) {
+            println!(
+                "`{}` changed something, committing with message `{}`",
+                op.cmd.join(" "),
+                op.commit_message
+            );
+            run_command(["git", "add", "-u"], self.verbose)?;
+            run_command(["git", "commit", "-m", &op.commit_message], self.verbose)?;
+        }
 
         Ok(())
     }

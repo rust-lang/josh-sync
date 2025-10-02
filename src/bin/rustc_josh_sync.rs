@@ -84,6 +84,7 @@ fn main() -> anyhow::Result<()> {
                 repo: "<repository-name>".to_string(),
                 path: Some("<relative-subtree-path>".to_string()),
                 filter: None,
+                post_pull: vec![],
             };
             config
                 .write(Path::new(DEFAULT_CONFIG_PATH))
