@@ -17,6 +17,8 @@ If you need to specify a more complex Josh `filter`, use `filter` field in the c
 
 The `init` command will also create an empty `rust-version` file (if it doesn't already exist) that stores the last upstream `rustc` SHA that was synced in the subtree.
 
+The [`josh-sync.example.toml`](josh-sync.example.toml) file contains all the things that can be configured.
+
 ## Performing pull
 
 A pull operation fetches changes to the subtree subdirectory that were performed in `rust-lang/rust` and merges them into the subtree repository. After performing a pull, a pull request is sent against the *subtree repository*. We *pull from rustc*.
@@ -25,7 +27,10 @@ A pull operation fetches changes to the subtree subdirectory that were performed
 2) Create a new branch that will be used for the subtree PR, e.g. `pull`
 3) Run `rustc-josh-sync pull`
 4) Send a PR to the subtree repository
-    - Note that `rustc-josh-sync` can do this for you if you have the [gh](https://cli.github.com/) CLI tool installed.
+
+- Note that `rustc-josh-sync` can do this for you if you have the [gh](https://cli.github.com/) CLI tool installed.
+
+You can also configure a set of postprocessing operations to be performed after a successful pull using the `post-pull` configuration.
 
 ## Performing push
 
@@ -33,7 +38,9 @@ A push operation takes changes performed in the subtree repository and merges th
 
 1) Checkout the latest default branch of the subtree
 2) Run `rustc-josh-sync push <branch> <your-github-username>`
-    - The branch with the push contents will be created in `https://github.com/<your-github-username>/rust` fork, in the `<branch>` branch.
+
+- The branch with the push contents will be created in `https://github.com/<your-github-username>/rust` fork, in the `<branch>` branch.
+
 3) Send a PR to [rust-lang/rust]
 
 ## Automating pulls on CI

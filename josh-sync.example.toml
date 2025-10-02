@@ -8,3 +8,10 @@ path = "library/stdarch"
 # Optionally, you can specify the complete Josh filter for complex cases
 # Note that this option is mutually exclusive with `path`
 #filter = ...
+
+# Optionally, you can specify a set of commands executed after a successful pull.
+# If the executed command changes the local git state (performs some modifications to files that
+# were already tracked), then a new commit with the given message will be created.
+#[[post-pull]]
+#cmd = ["cargo", "fmt"]
+#commit-message = "reformat"

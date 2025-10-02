@@ -69,13 +69,17 @@ fn run_command_inner<'a, Args: AsRef<[&'a str]>>(
 }
 
 /// Fail if there are files that need to be checked in.
-pub fn ensure_clean_git_state(verbose: bool) {
+pub fn ensure_clean_git_state(verbose: bool) -> anyhow::Result<()> {
     let read = run_command(
         ["git", "status", "--untracked-files=no", "--porcelain"],
         verbose,
     )
     .expect("cannot figure out if git state is clean");
-    assert!(read.is_empty(), "working directory must be clean");
+    if !read.is_empty() {
+        Err(anyhow::anyhow!("working directory must be clean"))
+    } else {
+        Ok(())
+    }
 }
 
 pub fn get_current_head_sha(verbose: bool) -> anyhow::Result<String> {

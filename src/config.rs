@@ -2,6 +2,7 @@ use anyhow::Context;
 use std::path::Path;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "kebab-case")]
 pub struct JoshConfig {
     #[serde(default = "default_org")]
     pub org: String,
@@ -12,6 +13,24 @@ pub struct JoshConfig {
     /// Optional filter specification for Josh.
     /// It cannot be used together with `path`.
     pub filter: Option<String>,
+    /// Operation(s) that should be performed after a pull.
+    /// Can be used to post-process the state of the repository after a pull happens.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub post_pull: Vec<PostPullOperation>,
+}
+
+/// Execute an operation after a pull, and if something changes in the local git state,
+/// perform a commit.
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "kebab-case")]
+pub struct PostPullOperation {
+    /// Execute a command with these arguments
+    /// At least one argument has to be present.
+    /// You can run e.g. bash if you want to do more complicated stuff.
+    pub cmd: Vec<String>,
+    /// If the git state has changed after `cmd`, add all changes to the index (`git add -u`)
+    /// and create a commit with the following commit message.
+    pub commit_message: String,
 }
 
 impl JoshConfig {
