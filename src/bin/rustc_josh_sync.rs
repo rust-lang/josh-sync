@@ -42,8 +42,10 @@ enum Command {
         #[clap(long)]
         upstream_commit: Option<String>,
 
-        /// By default, the `pull` command will exit with status code 2 if there is nothing to pull.
-        /// If you instead want to exit successfully in that case, pass this flag.
+        /// By default, the `pull` command will exit with status code 2 if there is nothing to pull,
+        /// and reset git to the original state.
+        /// If you instead want to exit successfully and keep the intermediate changes
+        /// in that case, pass this flag.
         #[clap(long)]
         allow_noop: bool,
 
@@ -110,7 +112,7 @@ fn main() -> anyhow::Result<()> {
             let ctx = load_context(&config_path, &rust_version_path)?;
             let josh = get_josh_proxy(verbose)?;
             let sync = GitSync::new(ctx.clone(), josh, verbose);
-            match sync.rustc_pull(upstream_repo, upstream_commit) {
+            match sync.rustc_pull(upstream_repo, upstream_commit, allow_noop) {
                 Ok(result) => {
                     if !maybe_create_gh_pr(
                         &ctx.config.full_repo_name(),

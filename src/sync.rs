@@ -45,6 +45,7 @@ impl GitSync {
         &self,
         upstream_repo: String,
         upstream_commit: Option<String>,
+        allow_noop: bool,
     ) -> Result<PullResult, RustcPullError> {
         // The upstream commit that we want to pull
         let upstream_sha = if let Some(sha) = upstream_commit {
@@ -142,8 +143,13 @@ This updates the rust-version file to {upstream_sha}."#,
         )
         .context("cannot create preparation commit")?;
 
-        // Make sure that we reset the above commit if something fails
-        let mut git_reset = GitResetOnDrop::new(orig_head, self.verbose);
+        // Make sure that we reset either to the default HEAD, or the preparation commit, if
+        // something bad happens
+        let mut git_reset = if allow_noop {
+            GitResetOnDrop::new(get_current_head_sha(self.verbose)?, self.verbose)
+        } else {
+            GitResetOnDrop::new(orig_head, self.verbose)
+        };
 
         // Fetch given rustc commit.
         run_command(&["git", "fetch", &josh_url], self.verbose)
@@ -215,9 +221,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
 
         // This is the easy case, no merge was performed, so we bail
         if current_sha == sha_pre_merge {
-            eprintln!(
-                "No merge was performed, no changes to pull were found. Rolling back the preparation commit."
-            );
+            eprintln!("No merge was performed, no changes to pull were found. Rolling back.");
             return Err(RustcPullError::NothingToPull);
         }
 
@@ -225,7 +229,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         // rustc, so a merge was created, but the in-tree diff can still be empty.
         // In that case we also bail.
         if self.has_empty_diff(&sha_pre_merge) {
-            eprintln!("Only empty changes were pulled. Rolling back the preparation commit.");
+            eprintln!("Only empty changes were pulled. Rolling back.");
             return Err(RustcPullError::NothingToPull);
         }
 
