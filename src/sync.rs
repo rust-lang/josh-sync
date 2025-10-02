@@ -65,7 +65,7 @@ impl GitSync {
                 .to_owned()
         };
 
-        ensure_clean_git_state(self.verbose);
+        ensure_clean_git_state(self.verbose)?;
 
         // Make sure josh is running.
         let josh = self
@@ -248,7 +248,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
     }
 
     pub fn rustc_push(&self, username: &str, branch: &str) -> anyhow::Result<()> {
-        ensure_clean_git_state(self.verbose);
+        ensure_clean_git_state(self.verbose)?;
 
         let base_upstream_sha = self.context.last_upstream_sha.clone().unwrap_or_default();
 
