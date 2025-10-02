@@ -80,8 +80,11 @@ impl GitSync {
 
         let orig_head = get_current_head_sha(self.verbose)?;
         println!(
-            "previous upstream base: {:?}",
-            self.context.last_upstream_sha
+            "previous upstream base: {}",
+            self.context
+                .last_upstream_sha
+                .as_deref()
+                .unwrap_or("<none>"),
         );
         println!("new upstream base: {upstream_sha}");
         println!("original local HEAD: {orig_head}");
