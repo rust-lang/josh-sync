@@ -100,6 +100,9 @@ impl GitSync {
             }
         }
 
+        // Create a checkpoint to which we reset if something unusual happens
+        let mut git_reset = GitResetOnDrop::new(orig_head, self.verbose);
+
         // Update the last upstream SHA file. As a separate commit, since making it part of
         // the merge has confused the heck out of josh in the past.
         // We pass `--no-verify` to avoid running git hooks.
@@ -142,14 +145,6 @@ This updates the rust-version file to {upstream_sha}."#,
             self.verbose,
         )
         .context("cannot create preparation commit")?;
-
-        // Make sure that we reset either to the default HEAD, or the preparation commit, if
-        // something bad happens
-        let mut git_reset = if allow_noop {
-            GitResetOnDrop::new(get_current_head_sha(self.verbose)?, self.verbose)
-        } else {
-            GitResetOnDrop::new(orig_head, self.verbose)
-        };
 
         // Fetch given rustc commit.
         run_command(&["git", "fetch", &josh_url], self.verbose)
@@ -219,16 +214,16 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         // Now detect if something has actually been pulled
         let current_sha = get_current_head_sha(self.verbose)?;
 
-        // This is the easy case, no merge was performed, so we bail
-        if current_sha == sha_pre_merge {
+        // This is the easy case, no merge was performed, so we bail, unless `allow_noop` is true
+        if current_sha == sha_pre_merge && !allow_noop {
             eprintln!("No merge was performed, no changes to pull were found. Rolling back.");
             return Err(RustcPullError::NothingToPull);
         }
 
         // But it can be more tricky - we can have only empty merge/rollup merge commits from
         // rustc, so a merge was created, but the in-tree diff can still be empty.
-        // In that case we also bail.
-        if self.has_empty_diff(&sha_pre_merge) {
+        // In that case we also bail, unless `allow_noop` is true.
+        if self.has_empty_diff(&sha_pre_merge) && !allow_noop {
             eprintln!("Only empty changes were pulled. Rolling back.");
             return Err(RustcPullError::NothingToPull);
         }
