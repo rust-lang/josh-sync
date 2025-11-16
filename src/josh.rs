@@ -67,6 +67,7 @@ pub fn try_install_josh(verbose: bool) -> Option<JoshProxy> {
     run_command(
         &[
             "cargo",
+            "+stable",
             "install",
             "--locked",
             "--git",
