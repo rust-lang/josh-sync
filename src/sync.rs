@@ -321,7 +321,12 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         // Do the actual push from the subtree git repo
         println!("Pushing changes...");
         run_command(
-            &["git", "push", &josh_url, &format!("HEAD:{branch}")],
+            &[
+                "git",
+                "push",
+                &josh_url,
+                &format!("HEAD:refs/heads/{branch}"),
+            ],
             self.verbose,
         )?;
         println!();
