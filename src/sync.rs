@@ -172,13 +172,15 @@ This updates the rust-version file to {upstream_sha}."#,
 
 Pull recent changes from https://github.com/{upstream_repo} via Josh.
 
-Upstream ref: {upstream_sha}
-Filtered ref: {incoming_ref}
+Upstream ref: {upstream_repo}@{upstream_sha}
+Filtered ref: {sub_org}/{sub_repo}@{incoming_ref}
 Upstream diff: https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{prev_upstream_sha}...{upstream_sha}
 
 This merge was created using https://github.com/rust-lang/josh-sync.
 "#,
             upstream_head_short = &upstream_sha[..12],
+            sub_org = self.context.config.org,
+            sub_repo = self.context.config.repo,
             prev_upstream_sha = self
                 .context
                 .last_upstream_sha
