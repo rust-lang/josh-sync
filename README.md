@@ -63,6 +63,10 @@ on:
     # Run at 04:00 UTC every Monday and Thursday
     - cron: '0 4 * * 1,4'
 
+env:
+  # Optional to print detailed command logs
+  JOSH_SYNC_VERBOSE: true
+
 jobs:
   pull:
     uses: rust-lang/josh-sync/.github/workflows/rustc-pull.yml@main
