@@ -9,7 +9,7 @@ name = "rustc-josh-sync"
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 directories = "6"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }

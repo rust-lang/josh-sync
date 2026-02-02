@@ -50,7 +50,7 @@ enum Command {
         allow_noop: bool,
 
         /// Print executed commands.
-        #[clap(long, short = 'v')]
+        #[clap(long, short = 'v', env = "JOSH_SYNC_VERBOSE")]
         verbose: bool,
     },
     /// Push changes into the main `rust-lang/rust` repository `branch` of a `rustc` fork under
@@ -72,7 +72,7 @@ enum Command {
         username: String,
 
         /// Print executed commands.
-        #[clap(long, short = 'v')]
+        #[clap(long, short = 'v', env = "JOSH_SYNC_VERBOSE")]
         verbose: bool,
     },
 }
