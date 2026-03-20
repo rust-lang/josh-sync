@@ -87,6 +87,7 @@ fn main() -> anyhow::Result<()> {
                 path: Some("<relative-subtree-path>".to_string()),
                 filter: None,
                 post_pull: vec![],
+                sym_filter: None,
             };
             config
                 .write(Path::new(DEFAULT_CONFIG_PATH))

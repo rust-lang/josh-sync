@@ -1,6 +1,6 @@
 use crate::SyncContext;
-use crate::config::PostPullOperation;
-use crate::josh::JoshProxy;
+use crate::config::{JoshConfig, PostPullOperation};
+use crate::josh::{JoshFilter, JoshProxy, try_install_josh_filter};
 use crate::utils::{ensure_clean_git_state, prompt};
 use crate::utils::{get_current_head_sha, run_command_at};
 use crate::utils::{run_command, stream_command};
@@ -329,23 +329,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         println!();
 
         // Do a round-trip check to make sure the push worked as expected.
-        run_command_at(
-            &["git", "fetch", &josh_url, &branch],
-            &std::env::current_dir().unwrap(),
-            self.verbose,
-        )?;
-        let head = get_current_head_sha(self.verbose)?;
-        let fetch_head = run_command(&["git", "rev-parse", "FETCH_HEAD"], self.verbose)?;
-        if head != fetch_head {
-            return Err(anyhow::anyhow!(
-                "Josh created a non-roundtrip push! Do NOT merge this into rustc!\n\
-                Expected {head}, got {fetch_head}."
-            ));
-        }
-        println!(
-            "Confirmed that the push round-trips back to {} properly. Please create a rustc PR.",
-            self.context.config.repo
-        );
+        self.roundtrip_check(&self.context.config, &josh_url, &branch)?;
 
         Ok(())
     }
@@ -369,6 +353,51 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         }
 
         Ok(())
+    }
+
+    fn roundtrip_check(
+        &self,
+        config: &JoshConfig,
+        josh_url: &str,
+        branch: &str,
+    ) -> anyhow::Result<()> {
+        run_command_at(
+            &["git", "fetch", josh_url, branch],
+            &std::env::current_dir().unwrap(),
+            self.verbose,
+        )?;
+        let head = if let Some(sym_filter) = &config.sym_filter {
+            let josh_filter = get_josh_filter(self.verbose)?;
+            josh_filter.run(
+                &[sym_filter, "HEAD"],
+                &std::env::current_dir().unwrap(),
+                self.verbose,
+            )?;
+            run_command(&["git", "rev-parse", "FILTERED_HEAD"], self.verbose)
+                .context("failed to get FILTERED_HEAD")?
+        } else {
+            get_current_head_sha(self.verbose)?
+        };
+        let fetch_head = run_command(&["git", "rev-parse", "FETCH_HEAD"], self.verbose)?;
+        if head != fetch_head {
+            return Err(anyhow::anyhow!(
+                "Josh created a non-roundtrip push! Do NOT merge this into rustc!\n\
+                Expected {head}, got {fetch_head}."
+            ));
+        }
+        println!(
+            "Confirmed that the push round-trips back to {} properly. Please create a rustc PR.",
+            self.context.config.repo
+        );
+        Ok(())
+    }
+}
+
+fn get_josh_filter(verbose: bool) -> anyhow::Result<JoshFilter> {
+    println!("Updating/installing josh-filter binary...");
+    match try_install_josh_filter(verbose) {
+        Some(filter) => Ok(filter),
+        None => Err(anyhow::anyhow!("Could not install josh-filter")),
     }
 }
 

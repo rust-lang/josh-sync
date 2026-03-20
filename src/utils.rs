@@ -1,5 +1,5 @@
 use anyhow::Context;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Run command and return its stdout.
@@ -35,6 +35,51 @@ fn run_command_inner<'a, Args: AsRef<[&'a str]>>(
     let mut cmd = Command::new(args[0]);
     cmd.current_dir(workdir);
     cmd.args(&args[1..]);
+
+    if verbose {
+        eprintln!("+ {cmd:?}");
+    }
+    if capture {
+        let out = cmd.output().expect("command failed");
+        let stdout = String::from_utf8_lossy(out.stdout.trim_ascii()).to_string();
+        let stderr = String::from_utf8_lossy(out.stderr.trim_ascii()).to_string();
+        if !out.status.success() {
+            Err(anyhow::anyhow!(
+                "Command `{cmd:?}` failed with exit code {:?}. STDOUT:\n{stdout}\nSTDERR:\n{stderr}",
+                out.status.code()
+            ))
+        } else {
+            Ok(stdout)
+        }
+    } else {
+        let status = cmd
+            .spawn()
+            .expect("cannot spawn command")
+            .wait()
+            .expect("command failed");
+        if !status.success() {
+            Err(anyhow::anyhow!(
+                "Command `{cmd:?}` failed with exit code {:?}",
+                status.code()
+            ))
+        } else {
+            Ok(String::new())
+        }
+    }
+}
+
+pub fn run_command_by_path<'a, Args: AsRef<[&'a str]>>(
+    cmd: &PathBuf,
+    args: Args,
+    workdir: &Path,
+    capture: bool,
+    verbose: bool,
+) -> anyhow::Result<String> {
+    let args = args.as_ref();
+
+    let mut cmd = Command::new(cmd);
+    cmd.current_dir(workdir);
+    cmd.args(args);
 
     if verbose {
         eprintln!("+ {cmd:?}");
@@ -104,4 +149,9 @@ pub fn read_line() -> String {
         .read_line(&mut line)
         .expect("cannot read line from stdin");
     line.trim().to_string()
+}
+
+pub fn is_null_sha(s: &str) -> bool {
+    let s = s.trim();
+    !s.is_empty() && s.chars().all(|c| c == '0')
 }

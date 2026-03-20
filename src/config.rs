@@ -17,6 +17,8 @@ pub struct JoshConfig {
     /// Can be used to post-process the state of the repository after a pull happens.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub post_pull: Vec<PostPullOperation>,
+    /// Optional symmetry filter applied to the local `HEAD` during round-trip check.
+    pub sym_filter: Option<String>,
 }
 
 /// Execute an operation after a pull, and if something changes in the local git state,

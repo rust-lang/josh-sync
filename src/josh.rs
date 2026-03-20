@@ -1,8 +1,8 @@
 use crate::config::JoshConfig;
-use crate::utils::run_command;
+use crate::utils::{is_null_sha, run_command, run_command_by_path};
 use anyhow::Context;
 use std::net::{SocketAddr, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -11,6 +11,10 @@ const JOSH_PORT: u16 = 42042;
 const JOSH_VERSION: &str = "r24.10.04";
 
 pub struct JoshProxy {
+    path: PathBuf,
+}
+
+pub struct JoshFilter {
     path: PathBuf,
 }
 
@@ -80,6 +84,44 @@ pub fn try_install_josh(verbose: bool) -> Option<JoshProxy> {
     )
     .expect("cannot install josh-proxy");
     JoshProxy::lookup()
+}
+
+impl JoshFilter {
+    /// Tries to figure out if `josh-filter` is installed.
+    pub fn lookup() -> Option<Self> {
+        which::which("josh-filter").ok().map(|path| Self { path })
+    }
+
+    pub fn run<'a, Args: AsRef<[&'a str]>>(
+        &self,
+        args: Args,
+        workdir: &Path,
+        verbose: bool,
+    ) -> anyhow::Result<()> {
+        let args = args.as_ref();
+        let output = run_command_by_path(&self.path, args, workdir, true, verbose)?;
+        if is_null_sha(&output) {
+            return Err(anyhow::anyhow!(
+                "josh-filter returned null SHA, filter may not match any content"
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub fn try_install_josh_filter(verbose: bool) -> Option<JoshFilter> {
+    run_command(
+        &[
+            "cargo",
+            "install",
+            "josh-cli",
+            "--git",
+            "https://github.com/josh-project/josh.git",
+        ],
+        verbose,
+    )
+    .expect("cannot install josh-filter");
+    JoshFilter::lookup()
 }
 
 /// Create a wrapper that represents a running instance of `josh-proxy` and stops it on drop.
