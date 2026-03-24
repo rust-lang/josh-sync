@@ -30,6 +30,10 @@ on:
         description: 'Zulip bot email address'
         required: false
         type: string
+      environment:
+        description: 'GitHub Actions environment that will be used to access secrets'
+        required: false
+        type: string
     secrets:
       github-app-secret:
         description: 'Secret for a GitHub app that will create the sync PR'
@@ -41,6 +45,7 @@ on:
 jobs:
   perform-pull:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     outputs:
       pr_url: ${{ steps.update-pr.outputs.pr_url }}
       pull_result: ${{ steps.josh-sync.outputs.pull_result }}
@@ -121,6 +126,7 @@ jobs:
     needs: [ perform-pull ]
     if: ${{ !cancelled() && inputs.zulip-stream-id != '' }}
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v4
 
