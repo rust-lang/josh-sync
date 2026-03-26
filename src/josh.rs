@@ -113,10 +113,14 @@ pub fn try_install_josh_filter(verbose: bool) -> Option<JoshFilter> {
     run_command(
         &[
             "cargo",
+            "+stable",
             "install",
-            "josh-cli",
+            "--locked",
             "--git",
-            "https://github.com/josh-project/josh.git",
+            "https://github.com/josh-project/josh",
+            "--tag",
+            JOSH_VERSION,
+            "josh-filter",
         ],
         verbose,
     )

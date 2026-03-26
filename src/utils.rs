@@ -36,36 +36,7 @@ fn run_command_inner<'a, Args: AsRef<[&'a str]>>(
     cmd.current_dir(workdir);
     cmd.args(&args[1..]);
 
-    if verbose {
-        eprintln!("+ {cmd:?}");
-    }
-    if capture {
-        let out = cmd.output().expect("command failed");
-        let stdout = String::from_utf8_lossy(out.stdout.trim_ascii()).to_string();
-        let stderr = String::from_utf8_lossy(out.stderr.trim_ascii()).to_string();
-        if !out.status.success() {
-            Err(anyhow::anyhow!(
-                "Command `{cmd:?}` failed with exit code {:?}. STDOUT:\n{stdout}\nSTDERR:\n{stderr}",
-                out.status.code()
-            ))
-        } else {
-            Ok(stdout)
-        }
-    } else {
-        let status = cmd
-            .spawn()
-            .expect("cannot spawn command")
-            .wait()
-            .expect("command failed");
-        if !status.success() {
-            Err(anyhow::anyhow!(
-                "Command `{cmd:?}` failed with exit code {:?}",
-                status.code()
-            ))
-        } else {
-            Ok(String::new())
-        }
-    }
+    execute_command(cmd, capture, verbose)
 }
 
 pub fn run_command_by_path<'a, Args: AsRef<[&'a str]>>(
@@ -81,6 +52,10 @@ pub fn run_command_by_path<'a, Args: AsRef<[&'a str]>>(
     cmd.current_dir(workdir);
     cmd.args(args);
 
+    execute_command(cmd, capture, verbose)
+}
+
+fn execute_command(mut cmd: Command, capture: bool, verbose: bool) -> anyhow::Result<String> {
     if verbose {
         eprintln!("+ {cmd:?}");
     }

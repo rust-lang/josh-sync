@@ -366,10 +366,10 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
             &std::env::current_dir().unwrap(),
             self.verbose,
         )?;
-        let head = if let Some(sym_filter) = &config.sym_filter {
+        let head = if let Some(subtree_filter) = &config.subtree_filter {
             let josh_filter = get_josh_filter(self.verbose)?;
             josh_filter.run(
-                &[sym_filter, "HEAD"],
+                &[subtree_filter, "HEAD"],
                 &std::env::current_dir().unwrap(),
                 self.verbose,
             )?;
