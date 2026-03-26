@@ -17,6 +17,9 @@ pub struct JoshConfig {
     /// Can be used to post-process the state of the repository after a pull happens.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub post_pull: Vec<PostPullOperation>,
+    /// Optional subtree filter applied to the local `HEAD` during round-trip check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtree_filter: Option<String>,
 }
 
 /// Execute an operation after a pull, and if something changes in the local git state,

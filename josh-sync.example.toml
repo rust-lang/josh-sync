@@ -15,3 +15,16 @@ path = "library/stdarch"
 #[[post-pull]]
 #cmd = ["cargo", "fmt"]
 #commit-message = "reformat"
+
+# Optionally, you can specify a subtree filter.
+# This will be applied to the local `HEAD` during the round-trip check.
+#
+# By default, the round-trip check expects the local repo to be a perfect 1:1 mirror
+# of the upstream tree. Leave this empty if that is your intent.
+#
+# If you are not doing a 1:1 mirror, set this to a filter that transforms your local
+# `HEAD` into a tree that exactly matches the upstream tree after the `filter`
+# is applied.
+# E.g., if the `filter` is ":/compiler/rustc_public:prefix=rustc_public",
+# the `subtree-filter` should be:
+#subtree-filter = ":/rustc_public:prefix=rustc_public"

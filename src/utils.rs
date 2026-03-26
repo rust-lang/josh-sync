@@ -1,5 +1,5 @@
 use anyhow::Context;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Run command and return its stdout.
@@ -36,6 +36,26 @@ fn run_command_inner<'a, Args: AsRef<[&'a str]>>(
     cmd.current_dir(workdir);
     cmd.args(&args[1..]);
 
+    execute_command(cmd, capture, verbose)
+}
+
+pub fn run_command_by_path<'a, Args: AsRef<[&'a str]>>(
+    cmd: &PathBuf,
+    args: Args,
+    workdir: &Path,
+    capture: bool,
+    verbose: bool,
+) -> anyhow::Result<String> {
+    let args = args.as_ref();
+
+    let mut cmd = Command::new(cmd);
+    cmd.current_dir(workdir);
+    cmd.args(args);
+
+    execute_command(cmd, capture, verbose)
+}
+
+fn execute_command(mut cmd: Command, capture: bool, verbose: bool) -> anyhow::Result<String> {
     if verbose {
         eprintln!("+ {cmd:?}");
     }
@@ -104,4 +124,9 @@ pub fn read_line() -> String {
         .read_line(&mut line)
         .expect("cannot read line from stdin");
     line.trim().to_string()
+}
+
+pub fn is_null_sha(s: &str) -> bool {
+    let s = s.trim();
+    !s.is_empty() && s.chars().all(|c| c == '0')
 }
