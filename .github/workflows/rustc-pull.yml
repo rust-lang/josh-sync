@@ -7,6 +7,10 @@ on:
         description: 'ID of a GitHub app that will create the sync PR'
         required: true
         type: string
+      pr-author:
+        description: 'Username of a GitHub account that will create the sync PR. Must include [bot] at the end.'
+        required: true
+        type: string
       branch-name:
         description: 'Name of the branch to create for the sync'
         required: false
@@ -110,14 +114,14 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Check if an open pull request already exists
-          RESULT=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | length' --json title`
+          RESULT=`gh pr list --author ${{ inputs.pr-author }} --state open -q 'map(select(.title=="Rustc pull update")) | length' --json title`
           if [[ "$RESULT" -eq 0 ]]; then
             echo "Creating new pull request"
             PR_URL=`gh pr create -B ${{ inputs.pr-base-branch }} --title 'Rustc pull update' --body 'Latest update from rustc.'`
             echo "Created pull request ${PR_URL}"
             echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
           else
-            PR_URL=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | .[0].url' --json url,title`
+            PR_URL=`gh pr list --author ${{ inputs.pr-author }} --state open -q 'map(select(.title=="Rustc pull update")) | .[0].url' --json url,title`
             echo "Updating pull request ${PR_URL}"
             echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
           fi
@@ -145,8 +149,8 @@ jobs:
             WORKFLOW_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo "message=Josh subtree sync failed. Check out the [workflow URL]($WORKFLOW_URL)." >> $GITHUB_OUTPUT
           else
-            CREATED_AT=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | .[0].createdAt' --json createdAt,title`
-            PR_URL=`gh pr list --author github-actions[bot] --state open -q 'map(select(.title=="Rustc pull update")) | .[0].url' --json url,title`
+            CREATED_AT=`gh pr list --author ${{ inputs.pr-author }} --state open -q 'map(select(.title=="Rustc pull update")) | .[0].createdAt' --json createdAt,title`
+            PR_URL=`gh pr list --author ${{ inputs.pr-author }} --state open -q 'map(select(.title=="Rustc pull update")) | .[0].url' --json url,title`
             week_ago=$(date +%F -d '7 days ago')
 
             # If there is an open PR that is at least a week old, post a message about it
