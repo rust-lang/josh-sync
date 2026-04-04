@@ -72,6 +72,8 @@ jobs:
     uses: rust-lang/josh-sync/.github/workflows/rustc-pull.yml@main
     with:
       github-app-id: ${{ vars.APP_CLIENT_ID }}
+      # Must end with [bot]
+      pr-author: "github-actions[bot]" 
       # If you want the Zulip post functionality
       #zulip-stream-id: 1234   # optional
       #zulip-bot-email: subtree-gha-notif-bot@rust-lang.zulipchat.com # optional
