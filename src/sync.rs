@@ -393,6 +393,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
     }
 }
 
+// This is called only when the `subtree-filter` is set.
 fn get_josh_filter(verbose: bool) -> anyhow::Result<JoshFilter> {
     println!("Updating/installing josh-filter binary...");
     match try_install_josh_filter(verbose) {
