@@ -8,7 +8,7 @@ use std::time::Duration;
 
 const JOSH_PORT: u16 = 42042;
 /// Version of `josh-proxy` that should be downloaded for the user.
-const JOSH_VERSION: &str = "r24.10.04";
+const JOSH_VERSION: &str = "r26.06.11";
 
 pub struct JoshProxy {
     path: PathBuf,
@@ -110,6 +110,7 @@ impl JoshFilter {
 }
 
 pub fn try_install_josh_filter(verbose: bool) -> Option<JoshFilter> {
+    // The josh-filter binary is included in the josh-cli crate
     run_command(
         &[
             "cargo",
@@ -120,7 +121,7 @@ pub fn try_install_josh_filter(verbose: bool) -> Option<JoshFilter> {
             "https://github.com/josh-project/josh",
             "--tag",
             JOSH_VERSION,
-            "josh-filter",
+            "josh-cli",
         ],
         verbose,
     )
@@ -137,6 +138,7 @@ pub struct RunningJoshProxy {
 impl RunningJoshProxy {
     pub fn git_url(&self, repo: &str, commit: Option<&str>, filter: &str) -> String {
         let commit = commit.map(|c| format!("@{c}")).unwrap_or_default();
+        let filter = urlencoding::encode(filter);
         format!(
             "http://localhost:{}/{repo}.git{commit}{filter}.git",
             self.port
