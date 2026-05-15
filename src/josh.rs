@@ -153,15 +153,18 @@ impl Drop for RunningJoshProxy {
                 .output()
                 .expect("failed to SIGINT josh-proxy");
             // Sadly there is no "wait with timeout"... so we just give it some time to finish.
-            std::thread::sleep(Duration::from_millis(100));
-            // Now hopefully it is gone.
-            if self
-                .process
-                .try_wait()
-                .expect("failed to wait for josh-proxy")
-                .is_some()
-            {
-                return;
+            // We try every 10ms until 1s passed.
+            for _ in 0..100 {
+                std::thread::sleep(Duration::from_millis(10));
+                // Now hopefully it is gone.
+                if self
+                    .process
+                    .try_wait()
+                    .expect("failed to wait for josh-proxy")
+                    .is_some()
+                {
+                    return;
+                }
             }
         }
         // If that didn't work (or we're not on Unix), kill it hard.
