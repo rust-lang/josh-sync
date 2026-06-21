@@ -19,6 +19,10 @@ pub struct JoshFilter {
 }
 
 impl JoshProxy {
+    pub fn from_path(path: PathBuf) -> Self {
+        Self { path }
+    }
+
     /// Tries to figure out if `josh-proxy` is installed.
     pub fn lookup() -> Option<Self> {
         which::which("josh-proxy").ok().map(|path| Self { path })

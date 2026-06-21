@@ -67,6 +67,13 @@ struct SharedArgs {
     #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
     rust_version_path: PathBuf,
 
+    /// Path to the josh-proxy binary to be used.
+    /// If not specified, it will be installed automatically.
+    ///
+    /// Warning: if you use a custom Josh version, ensure that it works properly!
+    #[clap(long)]
+    josh_proxy: Option<PathBuf>,
+
     /// Print executed commands.
     #[clap(long, short = 'v', env = "JOSH_SYNC_VERBOSE")]
     verbose: bool,
@@ -104,7 +111,7 @@ fn main() -> anyhow::Result<()> {
             shared,
         } => {
             let ctx = load_context(&shared.config_path, &shared.rust_version_path)?;
-            let josh = get_josh_proxy(shared.verbose)?;
+            let josh = get_josh_proxy(shared.josh_proxy, shared.verbose)?;
             let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
             match sync.rustc_pull(upstream_repo, upstream_commit, allow_noop) {
                 Ok(result) => {
@@ -140,7 +147,7 @@ fn main() -> anyhow::Result<()> {
             shared,
         } => {
             let ctx = load_context(&shared.config_path, &shared.rust_version_path)?;
-            let josh = get_josh_proxy(shared.verbose)?;
+            let josh = get_josh_proxy(shared.josh_proxy, shared.verbose)?;
             let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
             if let Err(error) = sync
                 .rustc_push(&username, &branch)
@@ -219,10 +226,18 @@ fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Res
     }
 }
 
-fn get_josh_proxy(verbose: bool) -> anyhow::Result<JoshProxy> {
-    println!("Updating/installing josh-proxy binary...");
-    match try_install_josh(verbose) {
-        Some(proxy) => Ok(proxy),
-        None => Err(anyhow::anyhow!("Could not install josh-proxy")),
+fn get_josh_proxy(proxy_path: Option<PathBuf>, verbose: bool) -> anyhow::Result<JoshProxy> {
+    match proxy_path {
+        Some(path) => {
+            println!("Using josh-proxy binary from {}", path.display());
+            Ok(JoshProxy::from_path(path))
+        }
+        None => {
+            println!("Updating/installing josh-proxy binary...");
+            match try_install_josh(verbose) {
+                Some(proxy) => Ok(proxy),
+                None => Err(anyhow::anyhow!("Could not install josh-proxy")),
+            }
+        }
     }
 }
