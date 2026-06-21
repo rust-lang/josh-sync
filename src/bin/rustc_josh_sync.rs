@@ -29,14 +29,6 @@ enum Command {
         #[clap(long, default_value(DEFAULT_UPSTREAM_REPO))]
         upstream_repo: String,
 
-        /// Path to the josh-sync TOML config file.
-        #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
-        config_path: PathBuf,
-
-        /// Path to a file storing the last synchronized rustc commit.
-        #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
-        rust_version_path: PathBuf,
-
         /// Override the rustc commit that we should pull from.
         /// By default, josh-sync will pull from rustc's HEAD (latest commit).
         #[clap(long)]
@@ -48,33 +40,36 @@ enum Command {
         /// in that case, pass this flag.
         #[clap(long)]
         allow_noop: bool,
-
-        /// Print executed commands.
-        #[clap(long, short = 'v', env = "JOSH_SYNC_VERBOSE")]
-        verbose: bool,
+        #[clap(flatten)]
+        shared: SharedArgs,
     },
     /// Push changes into the main `rust-lang/rust` repository `branch` of a `rustc` fork under
     /// the given GitHub `username`.
     /// The pushed branch should then be merged into the `rustc` repository.
     Push {
-        /// Path to the josh-sync TOML config file.
-        #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
-        config_path: PathBuf,
-
-        /// Path to a file storing the last synchronized rustc commit.
-        #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
-        rust_version_path: PathBuf,
-
         /// Branch that should be pushed to your remote
         branch: String,
 
         /// Your GitHub usename where the fork is located
         username: String,
-
-        /// Print executed commands.
-        #[clap(long, short = 'v', env = "JOSH_SYNC_VERBOSE")]
-        verbose: bool,
+        #[clap(flatten)]
+        shared: SharedArgs,
     },
+}
+
+#[derive(clap::Parser)]
+struct SharedArgs {
+    /// Path to the josh-sync TOML config file.
+    #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
+    config_path: PathBuf,
+
+    /// Path to a file storing the last synchronized rustc commit.
+    #[clap(long, default_value(DEFAULT_RUST_VERSION_PATH))]
+    rust_version_path: PathBuf,
+
+    /// Print executed commands.
+    #[clap(long, short = 'v', env = "JOSH_SYNC_VERBOSE")]
+    verbose: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -103,16 +98,14 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Command::Pull {
-            verbose,
-            config_path,
-            rust_version_path,
             upstream_repo,
             upstream_commit,
             allow_noop,
+            shared,
         } => {
-            let ctx = load_context(&config_path, &rust_version_path)?;
-            let josh = get_josh_proxy(verbose)?;
-            let sync = GitSync::new(ctx.clone(), josh, verbose);
+            let ctx = load_context(&shared.config_path, &shared.rust_version_path)?;
+            let josh = get_josh_proxy(shared.verbose)?;
+            let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
             match sync.rustc_pull(upstream_repo, upstream_commit, allow_noop) {
                 Ok(result) => {
                     if !maybe_create_gh_pr(
@@ -134,7 +127,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 Err(RustcPullError::PullFailed(error)) => {
                     eprintln!("Pull failure: {error:?}");
-                    if !verbose {
+                    if !shared.verbose {
                         eprintln!("Rerun with `-v` to see executed commands");
                     }
                     std::process::exit(1);
@@ -144,18 +137,16 @@ fn main() -> anyhow::Result<()> {
         Command::Push {
             username,
             branch,
-            config_path,
-            rust_version_path,
-            verbose,
+            shared,
         } => {
-            let ctx = load_context(&config_path, &rust_version_path)?;
-            let josh = get_josh_proxy(verbose)?;
-            let sync = GitSync::new(ctx.clone(), josh, verbose);
+            let ctx = load_context(&shared.config_path, &shared.rust_version_path)?;
+            let josh = get_josh_proxy(shared.verbose)?;
+            let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
             if let Err(error) = sync
                 .rustc_push(&username, &branch)
                 .context("cannot perform push")
             {
-                if !verbose {
+                if !shared.verbose {
                     eprintln!("Rerun with `-v` to see executed commands");
                 }
                 return Err(error);
@@ -163,7 +154,7 @@ fn main() -> anyhow::Result<()> {
 
             // Open PR with `subtree update` title to silence the `no-merges` triagebot check
             let title = format!("{} subtree update", ctx.config.repo);
-            let head = get_current_head_sha(verbose)?;
+            let head = get_current_head_sha(shared.verbose)?;
 
             let merge_msg = format!(
                 r#"Subtree update of `{repo}` to https://github.com/{full_repo}/commit/{head}.
