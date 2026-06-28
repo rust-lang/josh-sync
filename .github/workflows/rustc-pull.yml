@@ -11,6 +11,19 @@ on:
         description: 'Username of a GitHub account that will create the sync PR. Must include [bot] at the end.'
         required: true
         type: string
+      zulip-bot-email:
+        description: 'Zulip bot email address'
+        required: false
+        type: string
+      zulip-stream-id:
+        description: 'Zulip stream ID for notifications'
+        required: false
+        type: string
+      zulip-topic:
+        description: 'Zulip topic for notifications'
+        default: 'Subtree sync automation'
+        required: false
+        type: string
       branch-name:
         description: 'Name of the branch to create for the sync'
         required: false
@@ -21,19 +34,6 @@ on:
         required: false
         type: string
         default: 'master'
-      zulip-stream-id:
-        description: 'Zulip stream ID for notifications'
-        required: false
-        type: string
-      zulip-topic:
-        description: 'Zulip topic for notifications'
-        required: false
-        type: string
-        default: 'Subtree sync automation'
-      zulip-bot-email:
-        description: 'Zulip bot email address'
-        required: false
-        type: string
       environment:
         description: 'GitHub Actions environment that will be used to access secrets'
         required: false
@@ -164,7 +164,7 @@ jobs:
         uses: zulip/github-actions-zulip/send-message@e4c8f27c732ba9bd98ac6be0583096dea82feea5
         with:
           api-key: ${{ secrets.zulip-api-token }}
-          email: ${{ secrets.zulip-bot-email }}
+          email: ${{ inputs.zulip-bot-email }}
           organization-url: "https://rust-lang.zulipchat.com"
           to: ${{ inputs.zulip-stream-id }}
           type: "stream"
