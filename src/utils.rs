@@ -110,12 +110,16 @@ pub fn get_current_head_sha(verbose: bool) -> anyhow::Result<String> {
 /// Returns `default_response` on CI.
 pub fn prompt(prompt: &str, default_response: bool) -> bool {
     // Do not run interactive prompts on CI
-    if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("1") {
+    if is_inside_ci() {
         return default_response;
     }
 
     println!("{prompt} [y/n]");
     read_line().to_lowercase() == "y"
+}
+
+pub fn is_inside_ci() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("1")
 }
 
 pub fn read_line() -> String {

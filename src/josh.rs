@@ -1,5 +1,5 @@
 use crate::config::JoshConfig;
-use crate::utils::{is_null_sha, run_command_by_path};
+use crate::utils::{is_inside_ci, is_null_sha, run_command_by_path};
 use anyhow::Context;
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
@@ -120,20 +120,26 @@ fn try_install_josh_program(program: JoshProgram, verbose: bool) -> Option<PathB
         path.display()
     );
 
+    let mut args = vec![
+        "+stable",
+        "install",
+        "--locked",
+        "--git",
+        "https://github.com/josh-project/josh",
+        "--tag",
+        JOSH_VERSION,
+    ];
+
+    // Install binaries globally on CI to ensure better (rust-)cache usage
+    if !is_inside_ci() {
+        args.extend(["--root", install_dir.to_str()?]);
+    }
+
+    args.push(krate);
+
     run_command_by_path(
         &Path::new("cargo"),
-        &[
-            "+stable",
-            "install",
-            "--locked",
-            "--git",
-            "https://github.com/josh-project/josh",
-            "--tag",
-            JOSH_VERSION,
-            "--root",
-            install_dir.to_str()?,
-            krate,
-        ],
+        &args,
         &std::env::current_dir().unwrap(),
         false,
         verbose,
