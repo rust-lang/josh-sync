@@ -1,5 +1,5 @@
 use anyhow::Context;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 /// Run command and return its stdout.
@@ -40,7 +40,7 @@ fn run_command_inner<'a, Args: AsRef<[&'a str]>>(
 }
 
 pub fn run_command_by_path<'a, Args: AsRef<[&'a str]>>(
-    cmd: &PathBuf,
+    cmd: &Path,
     args: Args,
     workdir: &Path,
     capture: bool,

@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::Parser;
 use rustc_josh_sync::SyncContext;
 use rustc_josh_sync::config::{JoshConfig, load_config};
-use rustc_josh_sync::josh::{JoshProxy, try_install_josh};
+use rustc_josh_sync::josh::{JoshProxy, try_install_josh_proxy};
 use rustc_josh_sync::sync::{DEFAULT_UPSTREAM_REPO, GitSync, RustcPullError};
 use rustc_josh_sync::utils::{get_current_head_sha, prompt};
 use std::path::{Path, PathBuf};
@@ -232,12 +232,9 @@ fn get_josh_proxy(proxy_path: Option<PathBuf>, verbose: bool) -> anyhow::Result<
             println!("Using josh-proxy binary from {}", path.display());
             Ok(JoshProxy::from_path(path))
         }
-        None => {
-            println!("Updating/installing josh-proxy binary...");
-            match try_install_josh(verbose) {
-                Some(proxy) => Ok(proxy),
-                None => Err(anyhow::anyhow!("Could not install josh-proxy")),
-            }
-        }
+        None => match try_install_josh_proxy(verbose) {
+            Some(proxy) => Ok(proxy),
+            None => Err(anyhow::anyhow!("Could not install josh-proxy")),
+        },
     }
 }
