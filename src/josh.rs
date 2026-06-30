@@ -88,8 +88,14 @@ impl JoshFilter {
 }
 
 fn josh_install_directory() -> PathBuf {
-    let root = std::env::home_dir().unwrap_or(PathBuf::new());
-    root.join(".josh-sync").join("cargo")
+    let Some(user_dirs) = directories::ProjectDirs::from("org", "rust-lang", "rustc-josh") else {
+        eprintln!(
+            "Cannot determine user directory for Josh installation, falling back to local directory"
+        );
+        return PathBuf::from(".josh-sync").join("cargo");
+    };
+    let local_dir = user_dirs.data_local_dir();
+    local_dir.join("josh-sync").join("cargo")
 }
 
 #[derive(Copy, Clone, Debug)]
