@@ -1,5 +1,5 @@
 use crate::config::JoshConfig;
-use crate::utils::{is_null_sha, run_command, run_command_by_path};
+use crate::utils::{is_inside_ci, is_null_sha, run_command_by_path};
 use anyhow::Context;
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
@@ -14,18 +14,9 @@ pub struct JoshProxy {
     path: PathBuf,
 }
 
-pub struct JoshFilter {
-    path: PathBuf,
-}
-
 impl JoshProxy {
     pub fn from_path(path: PathBuf) -> Self {
         Self { path }
-    }
-
-    /// Tries to figure out if `josh-proxy` is installed.
-    pub fn lookup() -> Option<Self> {
-        which::which("josh-proxy").ok().map(|path| Self { path })
     }
 
     pub fn start(&self, config: &JoshConfig) -> anyhow::Result<RunningJoshProxy> {
@@ -70,30 +61,13 @@ impl JoshProxy {
     }
 }
 
-/// Try to install (or update) josh-proxy, to make sure that we use the correct version.
-pub fn try_install_josh(verbose: bool) -> Option<JoshProxy> {
-    run_command(
-        &[
-            "cargo",
-            "+stable",
-            "install",
-            "--locked",
-            "--git",
-            "https://github.com/josh-project/josh",
-            "--tag",
-            JOSH_VERSION,
-            "josh-proxy",
-        ],
-        verbose,
-    )
-    .expect("cannot install josh-proxy");
-    JoshProxy::lookup()
+pub struct JoshFilter {
+    path: PathBuf,
 }
 
 impl JoshFilter {
-    /// Tries to figure out if `josh-filter` is installed.
-    pub fn lookup() -> Option<Self> {
-        which::which("josh-filter").ok().map(|path| Self { path })
+    pub fn from_path(path: PathBuf) -> Self {
+        Self { path }
     }
 
     pub fn run<'a, Args: AsRef<[&'a str]>>(
@@ -113,24 +87,71 @@ impl JoshFilter {
     }
 }
 
+fn josh_install_directory() -> PathBuf {
+    let Some(user_dirs) = directories::ProjectDirs::from("org", "rust-lang", "rustc-josh") else {
+        eprintln!(
+            "Cannot determine user directory for Josh installation, falling back to local directory"
+        );
+        return PathBuf::from(".josh-sync").join("cargo");
+    };
+    let local_dir = user_dirs.data_local_dir();
+    local_dir.join("josh-sync").join("cargo")
+}
+
+#[derive(Copy, Clone, Debug)]
+enum JoshProgram {
+    Proxy,
+    Filter,
+}
+
+pub fn try_install_josh_proxy(verbose: bool) -> Option<JoshProxy> {
+    try_install_josh_program(JoshProgram::Proxy, verbose).map(JoshProxy::from_path)
+}
+
 pub fn try_install_josh_filter(verbose: bool) -> Option<JoshFilter> {
-    // The josh-filter binary is included in the josh-cli crate
-    run_command(
-        &[
-            "cargo",
-            "+stable",
-            "install",
-            "--locked",
-            "--git",
-            "https://github.com/josh-project/josh",
-            "--tag",
-            JOSH_VERSION,
-            "josh-cli",
-        ],
+    try_install_josh_program(JoshProgram::Filter, verbose).map(JoshFilter::from_path)
+}
+
+/// Try to install (or update) a josh CLI program in a local installation directory.
+/// Ensures that we use the correct version.
+fn try_install_josh_program(program: JoshProgram, verbose: bool) -> Option<PathBuf> {
+    let install_dir = josh_install_directory();
+    let (krate, binary) = match program {
+        JoshProgram::Proxy => ("josh-proxy", "josh-proxy"),
+        JoshProgram::Filter => ("josh-cli", "josh-filter"),
+    };
+    let path = install_dir.join("bin").join(binary);
+    println!(
+        "Updating/installing {binary} binary into `{}`...",
+        path.display()
+    );
+
+    let mut args = vec![
+        "+stable",
+        "install",
+        "--locked",
+        "--git",
+        "https://github.com/josh-project/josh",
+        "--tag",
+        JOSH_VERSION,
+    ];
+
+    // Install binaries globally on CI to ensure better (rust-)cache usage
+    if !is_inside_ci() {
+        args.extend(["--root", install_dir.to_str()?]);
+    }
+
+    args.push(krate);
+
+    run_command_by_path(
+        &Path::new("cargo"),
+        &args,
+        &std::env::current_dir().unwrap(),
+        false,
         verbose,
     )
-    .expect("cannot install josh-filter");
-    JoshFilter::lookup()
+    .unwrap_or_else(|e| panic!("cannot install {binary}: {e:?}"));
+    if path.is_file() { Some(path) } else { None }
 }
 
 /// Create a wrapper that represents a running instance of `josh-proxy` and stops it on drop.
