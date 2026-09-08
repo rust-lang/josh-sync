@@ -38,6 +38,15 @@ impl FilterVersion {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Copy, Clone, Default)]
+pub enum BaseCommit {
+    /// Sync from the latest commit in the repo.
+    #[default]
+    Latest,
+    /// Sync from the latest nightly commit.
+    Nightly,
+}
+
 pub struct PullResult {
     pub merge_commit_message: String,
 }

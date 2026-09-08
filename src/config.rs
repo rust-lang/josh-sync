@@ -1,4 +1,4 @@
-use crate::sync::FilterVersion;
+use crate::sync::{BaseCommit, FilterVersion};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 
@@ -34,6 +34,10 @@ pub struct JoshConfig {
         with = "filter_version"
     )]
     pub filter_version: FilterVersion,
+    /// What to use as the base commit to sync from. Defaults to the latest commit of the remote
+    /// repository.
+    #[serde(default)]
+    pub base_commit: BaseCommit,
     #[serde(default = "default_rust_version_path")]
     pub rust_version_path: PathBuf,
 }
