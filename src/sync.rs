@@ -125,13 +125,13 @@ impl GitSync {
         // We do this before the merge so that if there are merge conflicts, we have
         // the right rust-version file while resolving them.
         std::fs::write(
-            &self.context.last_upstream_sha_path,
+            &self.context.config.rust_version_path,
             &format!("{upstream_sha}\n"),
         )
         .with_context(|| {
             anyhow::anyhow!(
                 "cannot write upstream SHA to {}",
-                self.context.last_upstream_sha_path.display()
+                self.context.config.rust_version_path.display()
             )
         })?;
 
@@ -143,7 +143,8 @@ This updates the rust-version file to {upstream_sha}."#,
 
         let rust_version_path = self
             .context
-            .last_upstream_sha_path
+            .config
+            .rust_version_path
             .to_string_lossy()
             .to_string();
         // Add the file to git index, in case this is the first time we perform the sync

@@ -1,12 +1,15 @@
 use crate::sync::FilterVersion;
 use anyhow::Context;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+const DEFAULT_RUST_VERSION_PATH: &str = "rust-version";
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct JoshConfig {
     #[serde(default = "default_org")]
     pub org: String,
+    /// Name of the subtree repository. For example `rustc-dev-guide`.
     pub repo: String,
     /// Relative path where the subtree is located in rust-lang/rust.
     /// For example `src/doc/rustc-dev-guide`.
@@ -31,6 +34,8 @@ pub struct JoshConfig {
         with = "filter_version"
     )]
     pub filter_version: FilterVersion,
+    #[serde(default = "default_rust_version_path")]
+    pub rust_version_path: PathBuf,
 }
 
 impl JoshConfig {
@@ -118,4 +123,8 @@ pub fn load_config(path: &Path) -> anyhow::Result<JoshConfig> {
     }
 
     Ok(config)
+}
+
+pub fn default_rust_version_path() -> PathBuf {
+    PathBuf::from(DEFAULT_RUST_VERSION_PATH)
 }
