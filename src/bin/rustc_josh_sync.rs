@@ -194,14 +194,10 @@ https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{username}:{branch}?quick_pul
 fn load_context(config_path: &Path) -> anyhow::Result<SyncContext> {
     let config = load_config(&config_path)
         .context("cannot load config. Run the `init` command to initialize it.")?;
-    let rust_version = std::fs::read_to_string(&config.rust_version_path)
-        .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
-        .map(|version| version.trim().to_string())
-        .map(Some)
-        .unwrap_or_default();
+    let last_upstream_sha = rust_version(&config);
     Ok(SyncContext {
         config,
-        last_upstream_sha: rust_version,
+        last_upstream_sha,
     })
 }
 

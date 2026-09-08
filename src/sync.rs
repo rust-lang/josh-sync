@@ -565,6 +565,35 @@ fn wrap_compat(filter: &str) -> String {
     format!(":~(history=\"keep-trivial-merges\",gpgsig=\"norm-lf\")[{filter}]")
 }
 
+pub fn rust_version(config: &JoshConfig) -> Option<String> {
+    let Ok(file) = std::fs::read_to_string(&config.rust_version_path)
+        .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
+    else {
+        return None;
+    };
+    Some(match config.base_commit {
+        BaseCommit::Latest => file.trim().to_string(),
+        BaseCommit::Nightly => {
+            let toml = file
+                .parse::<toml_edit::Document<_>>()
+                .inspect_err(|err| eprintln!("Cannot parse rust-version file as TOML: {err:?}"))
+                .ok()?;
+            let nightly = toml.get("toolchain")?.get("channel")?.as_str()?;
+            run_command(
+                &["rustc", &format!("+{nightly}"), "--version", "--verbose"],
+                false,
+            )
+            .inspect_err(|err| eprintln!("Cannot run rustc to get the commit hash: {err:?}"))
+            .ok()?
+            .lines()
+            .find(|line| line.starts_with("commit-hash: "))?
+            .split_whitespace()
+            .last()?
+            .to_string()
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
