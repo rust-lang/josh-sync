@@ -4,7 +4,7 @@ use rustc_josh_sync::SyncContext;
 use rustc_josh_sync::config::{JoshConfig, default_rust_version_path, load_config};
 use rustc_josh_sync::josh::{JoshProxy, try_install_josh_proxy};
 use rustc_josh_sync::sync::{
-    BaseCommit, DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, RustcPullError,
+    BaseCommit, DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, RustcPullError, rust_version,
 };
 use rustc_josh_sync::utils::{get_current_head_sha, prompt};
 use std::path::{Path, PathBuf};
