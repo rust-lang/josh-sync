@@ -4,10 +4,11 @@ use rustc_josh_sync::SyncContext;
 use rustc_josh_sync::config::{JoshConfig, load_config};
 use rustc_josh_sync::josh::{JoshProxy, try_install_josh_proxy};
 use rustc_josh_sync::sync::{
-    BaseCommit, DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, RustcPullError, rust_version,
+    BaseCommit, DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, RustcPullError,
 };
-use rustc_josh_sync::utils::{get_current_head_sha, prompt};
+use rustc_josh_sync::utils::{get_current_head_sha, prompt, run_command};
 use std::path::{Path, PathBuf};
+use toml_edit::Document;
 
 const DEFAULT_CONFIG_PATH: &str = "josh-sync.toml";
 
@@ -192,6 +193,35 @@ https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{username}:{branch}?quick_pul
     }
 
     Ok(())
+}
+
+fn rust_version(config: &JoshConfig, rust_version_path: &Path) -> Option<String> {
+    let Ok(file) = std::fs::read_to_string(rust_version_path)
+        .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
+    else {
+        return None;
+    };
+    Some(match config.base_commit {
+        BaseCommit::Latest => file.trim().to_string(),
+        BaseCommit::Nightly => {
+            let toml = file
+                .parse::<Document<_>>()
+                .inspect_err(|err| eprintln!("Cannot parse rust-version file as TOML: {err:?}"))
+                .ok()?;
+            let nightly = toml.get("toolchain")?.get("channel")?.as_str()?;
+            run_command(
+                &["rustc", &format!("+{nightly}"), "--version", "--verbose"],
+                false,
+            )
+            .inspect_err(|err| eprintln!("Cannot run rustc to get the commit hash: {err:?}"))
+            .ok()?
+            .lines()
+            .find(|line| line.starts_with("commit-hash: "))?
+            .split_whitespace()
+            .last()?
+            .to_string()
+        }
+    })
 }
 
 fn load_context(

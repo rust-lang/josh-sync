@@ -5,9 +5,8 @@ use crate::utils::{ensure_clean_git_state, prompt};
 use crate::utils::{get_current_head_sha, run_command_at};
 use crate::utils::{run_command, stream_command};
 use anyhow::{Context, Error};
-use chrono::Utc;
 use std::path::{Path, PathBuf};
-use toml_edit::DocumentMut;
+use toml_edit::{Document, DocumentMut};
 
 pub const DEFAULT_UPSTREAM_REPO: &str = "rust-lang/rust";
 
@@ -89,7 +88,8 @@ impl GitSync {
         // Create a checkpoint to which we reset if something unusual happens
         let mut git_reset = GitResetOnDrop::new(orig_head, self.verbose);
 
-        let prep_message = self.bump_version(&upstream_repo, &upstream_commit)?;
+        let (upstream_sha, prep_message) = self.bump_version(&upstream_repo, &upstream_commit)?;
+        println!("new upstream base: {upstream_sha}");
 
         let rust_version_path = self.context.rust_version_path.to_string_lossy();
         // Add the file to git index, in case this is the first time we perform the sync
@@ -107,12 +107,6 @@ impl GitSync {
             self.verbose,
         )
         .context("cannot create preparation commit")?;
-
-        let upstream_sha = upstream_commit
-            .or_else(|| rust_version(&self.context.config, &self.context.rust_version_path))
-            .ok_or_else(|| anyhow::anyhow!("cannot determine upstream SHA"))?;
-
-        println!("new upstream base: {upstream_sha}");
 
         // Make sure josh is running.
         let josh = self
@@ -374,11 +368,12 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         Ok(())
     }
 
+    /// Returns a tuple of the (upstream_sha, prep_message) to be used for the pull.
     fn bump_version(
         &self,
         upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<String, RustcPullError> {
+    ) -> Result<(String, String), RustcPullError> {
         match self.context.config.base_commit {
             BaseCommit::Latest => self.bump_version_latest(upstream_repo, upstream_commit),
             BaseCommit::Nightly => self.bump_version_nightly(upstream_repo, upstream_commit),
@@ -389,7 +384,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         &self,
         upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<String, RustcPullError> {
+    ) -> Result<(String, String), RustcPullError> {
         // The upstream commit that we want to pull
         let upstream_sha = if let Some(sha) = upstream_commit {
             sha.clone()
@@ -435,24 +430,27 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
             )
         })?;
 
-        Ok(format!(
+        let prep_message = format!(
             r#"Prepare for merging from {upstream_repo}
 
 This updates the rust-version file to {upstream_sha}."#,
-        ))
+        );
+
+        Ok((upstream_sha, prep_message))
     }
 
     fn bump_version_nightly(
         &self,
         upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<String, RustcPullError> {
+    ) -> Result<(String, String), RustcPullError> {
+        const MANIFEST_URL: &str = "https://static.rust-lang.org/dist/channel-rust-nightly.toml";
+
         if upstream_commit.is_some() {
             return Err(RustcPullError::PullFailed(anyhow::anyhow!(
                 "Cannot specify an upstream commit when using nightly sync mode"
             )));
         }
-        let date = Utc::now().format("%Y-%m-%d").to_string();
         let mut toml = std::fs::read_to_string(&self.context.rust_version_path)
             .with_context(|| {
                 anyhow::anyhow!(
@@ -482,7 +480,32 @@ This updates the rust-version file to {upstream_sha}."#,
                     self.context.rust_version_path.display()
                 )
             })?;
+
+        // Parse the nightly manifest file to get the latest nightly date and the corresponding
+        // upstream SHA for cargo.
+        let nightly_manifest = ureq::get(MANIFEST_URL)
+            .call()
+            .with_context(|| anyhow::anyhow!("cannot fetch nightly manifest from {MANIFEST_URL}"))?
+            .body_mut()
+            .read_to_string()
+            .with_context(|| anyhow::anyhow!("cannot read nightly manifest"))?
+            .parse::<Document<_>>()
+            .with_context(|| anyhow::anyhow!("cannot parse nightly manifest as TOML"))?;
+        let date = nightly_manifest
+            .get("date")
+            .and_then(|v| v.as_str())
+            .with_context(|| anyhow::anyhow!("cannot find `date` key in nightly manifest"))?;
         let nightly = format!("nightly-{date}");
+        let upstream_sha = nightly_manifest
+            .get("pkg")
+            .and_then(|v| v.get("cargo"))
+            .and_then(|v| v.get("git_commit_hash"))
+            .and_then(|v| v.as_str())
+            .with_context(|| {
+                anyhow::anyhow!("cannot find `pkg.cargo.git_commit_hash` key in nightly manifest")
+            })?
+            .to_string();
+
         *channel = toml_edit::value(&nightly);
         std::fs::write(&self.context.rust_version_path, toml.to_string()).with_context(|| {
             anyhow::anyhow!(
@@ -491,11 +514,13 @@ This updates the rust-version file to {upstream_sha}."#,
             )
         })?;
 
-        Ok(format!(
+        let prep_message = format!(
             r#"Prepare for merging from {upstream_repo}
 
 This updates the rust-toolchain.toml file to {nightly}."#,
-        ))
+        );
+
+        Ok((upstream_sha, prep_message))
     }
 }
 
@@ -640,35 +665,6 @@ fn convert_rev_syntax(input: &str) -> String {
 /// `:~(history="keep-trivial-merges",gpgsig="norm-lf")[:your/filter]`
 fn wrap_compat(filter: &str) -> String {
     format!(":~(history=\"keep-trivial-merges\",gpgsig=\"norm-lf\")[{filter}]")
-}
-
-pub fn rust_version(config: &JoshConfig, rust_version_path: &Path) -> Option<String> {
-    let Ok(file) = std::fs::read_to_string(rust_version_path)
-        .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
-    else {
-        return None;
-    };
-    Some(match config.base_commit {
-        BaseCommit::Latest => file.trim().to_string(),
-        BaseCommit::Nightly => {
-            let toml = file
-                .parse::<toml_edit::Document<_>>()
-                .inspect_err(|err| eprintln!("Cannot parse rust-version file as TOML: {err:?}"))
-                .ok()?;
-            let nightly = toml.get("toolchain")?.get("channel")?.as_str()?;
-            run_command(
-                &["rustc", &format!("+{nightly}"), "--version", "--verbose"],
-                false,
-            )
-            .inspect_err(|err| eprintln!("Cannot run rustc to get the commit hash: {err:?}"))
-            .ok()?
-            .lines()
-            .find(|line| line.starts_with("commit-hash: "))?
-            .split_whitespace()
-            .last()?
-            .to_string()
-        }
-    })
 }
 
 #[cfg(test)]
