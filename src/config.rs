@@ -3,6 +3,7 @@ use anyhow::Context;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_RUST_VERSION_PATH: &str = "rust-version";
+const DEFAULT_RUST_TOOLCHAIN_PATH: &str = "rust-toolchain.toml";
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "kebab-case")]
@@ -38,8 +39,6 @@ pub struct JoshConfig {
     /// repository.
     #[serde(default)]
     pub base_commit: BaseCommit,
-    #[serde(default = "default_rust_version_path")]
-    pub rust_version_path: PathBuf,
 }
 
 impl JoshConfig {
@@ -51,6 +50,13 @@ impl JoshConfig {
         let config = toml::to_string_pretty(self).context("cannot serialize config")?;
         std::fs::write(path, config).context("cannot write config")?;
         Ok(())
+    }
+
+    pub fn rust_version_path(&self) -> PathBuf {
+        match self.base_commit {
+            BaseCommit::Latest => PathBuf::from(DEFAULT_RUST_VERSION_PATH),
+            BaseCommit::Nightly => PathBuf::from(DEFAULT_RUST_TOOLCHAIN_PATH),
+        }
     }
 }
 
@@ -127,8 +133,4 @@ pub fn load_config(path: &Path) -> anyhow::Result<JoshConfig> {
     }
 
     Ok(config)
-}
-
-pub fn default_rust_version_path() -> PathBuf {
-    PathBuf::from(DEFAULT_RUST_VERSION_PATH)
 }

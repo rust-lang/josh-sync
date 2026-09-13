@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Parser;
 use rustc_josh_sync::SyncContext;
-use rustc_josh_sync::config::{JoshConfig, default_rust_version_path, load_config};
+use rustc_josh_sync::config::{JoshConfig, load_config};
 use rustc_josh_sync::josh::{JoshProxy, try_install_josh_proxy};
 use rustc_josh_sync::sync::{
     BaseCommit, DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, RustcPullError, rust_version,
@@ -64,6 +64,10 @@ struct SharedArgs {
     #[clap(long, default_value(DEFAULT_CONFIG_PATH))]
     config_path: PathBuf,
 
+    /// Path to a file storing the last synchronized rustc commit.
+    #[clap(long)]
+    rust_version_path: Option<PathBuf>,
+
     /// Path to the josh-proxy binary to be used.
     /// If not specified, it will be installed automatically.
     ///
@@ -89,24 +93,23 @@ fn main() -> anyhow::Result<()> {
                 subtree_filter: None,
                 filter_version: FilterVersion::latest(),
                 base_commit: BaseCommit::default(),
-                rust_version_path: default_rust_version_path(),
             };
             config
                 .write(Path::new(DEFAULT_CONFIG_PATH))
                 .context("cannot write config")?;
             println!("Created config file at {DEFAULT_CONFIG_PATH}");
 
-            if !config.rust_version_path.is_file() {
-                std::fs::write(&config.rust_version_path, "")
-                    .context("cannot write rust-version file")?;
+            let rust_version_path = config.rust_version_path();
+            if !rust_version_path.is_file() {
+                std::fs::write(&rust_version_path, "").context("cannot write rust-version file")?;
                 println!(
                     "Created empty rust-version file at {}",
-                    config.rust_version_path.display()
+                    rust_version_path.display()
                 );
             } else {
                 println!(
                     "{} already exists, not doing anything with it",
-                    config.rust_version_path.display()
+                    rust_version_path.display()
                 );
             }
         }
@@ -116,7 +119,7 @@ fn main() -> anyhow::Result<()> {
             allow_noop,
             shared,
         } => {
-            let ctx = load_context(&shared.config_path)?;
+            let ctx = load_context(shared.config_path, shared.rust_version_path)?;
             let josh = get_josh_proxy(shared.josh_proxy, shared.verbose)?;
             let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
             match sync.rustc_pull(upstream_repo, upstream_commit, allow_noop) {
@@ -152,7 +155,7 @@ fn main() -> anyhow::Result<()> {
             branch,
             shared,
         } => {
-            let ctx = load_context(&shared.config_path)?;
+            let ctx = load_context(shared.config_path, shared.rust_version_path)?;
             let josh = get_josh_proxy(shared.josh_proxy, shared.verbose)?;
             let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
             if let Err(error) = sync
@@ -191,13 +194,18 @@ https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{username}:{branch}?quick_pul
     Ok(())
 }
 
-fn load_context(config_path: &Path) -> anyhow::Result<SyncContext> {
+fn load_context(
+    config_path: PathBuf,
+    rust_version_path: Option<PathBuf>,
+) -> anyhow::Result<SyncContext> {
     let config = load_config(&config_path)
         .context("cannot load config. Run the `init` command to initialize it.")?;
-    let last_upstream_sha = rust_version(&config);
+    let rust_version_path = rust_version_path.unwrap_or_else(|| config.rust_version_path());
+    let last_upstream_sha = rust_version(&config, &rust_version_path);
     Ok(SyncContext {
         config,
         last_upstream_sha,
+        rust_version_path,
     })
 }
 

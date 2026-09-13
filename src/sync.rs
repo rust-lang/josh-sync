@@ -91,7 +91,7 @@ impl GitSync {
 
         let prep_message = self.bump_version(&upstream_repo, &upstream_commit)?;
 
-        let rust_version_path = self.context.config.rust_version_path.to_string_lossy();
+        let rust_version_path = self.context.rust_version_path.to_string_lossy();
         // Add the file to git index, in case this is the first time we perform the sync
         // Otherwise `git commit <file>` below wouldn't work.
         run_command(&["git", "add", &rust_version_path], self.verbose)?;
@@ -109,7 +109,7 @@ impl GitSync {
         .context("cannot create preparation commit")?;
 
         let upstream_sha = upstream_commit
-            .or_else(|| rust_version(&self.context.config))
+            .or_else(|| rust_version(&self.context.config, &self.context.rust_version_path))
             .ok_or_else(|| anyhow::anyhow!("cannot determine upstream SHA"))?;
 
         println!("new upstream base: {upstream_sha}");
@@ -425,13 +425,13 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         // We do this before the merge so that if there are merge conflicts, we have
         // the right rust-version file while resolving them.
         std::fs::write(
-            &self.context.config.rust_version_path,
+            &self.context.rust_version_path,
             &format!("{upstream_sha}\n"),
         )
         .with_context(|| {
             anyhow::anyhow!(
                 "cannot write upstream SHA to {}",
-                self.context.config.rust_version_path.display()
+                self.context.rust_version_path.display()
             )
         })?;
 
@@ -453,18 +453,18 @@ This updates the rust-version file to {upstream_sha}."#,
             )));
         }
         let date = Utc::now().format("%Y-%m-%d").to_string();
-        let mut toml = std::fs::read_to_string(&self.context.config.rust_version_path)
+        let mut toml = std::fs::read_to_string(&self.context.rust_version_path)
             .with_context(|| {
                 anyhow::anyhow!(
                     "cannot read rust-toolchain.toml file from {}",
-                    self.context.config.rust_version_path.display()
+                    self.context.rust_version_path.display()
                 )
             })?
             .parse::<DocumentMut>()
             .with_context(|| {
                 anyhow::anyhow!(
                     "cannot parse rust-toolchain.toml file from {}",
-                    self.context.config.rust_version_path.display()
+                    self.context.rust_version_path.display()
                 )
             })?;
         let channel = toml
@@ -472,26 +472,24 @@ This updates the rust-version file to {upstream_sha}."#,
             .with_context(|| {
                 anyhow::anyhow!(
                     "cannot find `toolchain` key in rust-toolchain.toml file from {}",
-                    self.context.config.rust_version_path.display()
+                    self.context.rust_version_path.display()
                 )
             })?
             .get_mut("channel")
             .with_context(|| {
                 anyhow::anyhow!(
                     "cannot find `channel` key in rust-toolchain.toml file from {}",
-                    self.context.config.rust_version_path.display()
+                    self.context.rust_version_path.display()
                 )
             })?;
         let nightly = format!("nightly-{date}");
         *channel = toml_edit::value(&nightly);
-        std::fs::write(&self.context.config.rust_version_path, toml.to_string()).with_context(
-            || {
-                anyhow::anyhow!(
-                    "cannot write rust-toolchain.toml file to {}",
-                    self.context.config.rust_version_path.display()
-                )
-            },
-        )?;
+        std::fs::write(&self.context.rust_version_path, toml.to_string()).with_context(|| {
+            anyhow::anyhow!(
+                "cannot write rust-toolchain.toml file to {}",
+                self.context.rust_version_path.display()
+            )
+        })?;
 
         Ok(format!(
             r#"Prepare for merging from {upstream_repo}
@@ -644,8 +642,8 @@ fn wrap_compat(filter: &str) -> String {
     format!(":~(history=\"keep-trivial-merges\",gpgsig=\"norm-lf\")[{filter}]")
 }
 
-pub fn rust_version(config: &JoshConfig) -> Option<String> {
-    let Ok(file) = std::fs::read_to_string(&config.rust_version_path)
+pub fn rust_version(config: &JoshConfig, rust_version_path: &Path) -> Option<String> {
+    let Ok(file) = std::fs::read_to_string(rust_version_path)
         .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
     else {
         return None;
