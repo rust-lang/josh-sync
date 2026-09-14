@@ -40,7 +40,7 @@ impl FilterVersion {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Copy, Clone, Default)]
-pub enum BaseCommit {
+pub enum PullMode {
     /// Sync from the latest commit in the repo.
     #[default]
     Latest,
@@ -50,6 +50,11 @@ pub enum BaseCommit {
 
 pub struct PullResult {
     pub merge_commit_message: String,
+}
+
+struct VersionBump {
+    prep_message: String,
+    upstream_sha: String,
 }
 
 pub struct GitSync {
@@ -88,7 +93,10 @@ impl GitSync {
         // Create a checkpoint to which we reset if something unusual happens
         let mut git_reset = GitResetOnDrop::new(orig_head, self.verbose);
 
-        let (upstream_sha, prep_message) = self.bump_version(&upstream_repo, &upstream_commit)?;
+        let VersionBump {
+            upstream_sha,
+            prep_message,
+        } = self.bump_version(&upstream_repo, &upstream_commit)?;
         println!("new upstream base: {upstream_sha}");
 
         let rust_version_path = self.context.rust_version_path.to_string_lossy();
@@ -373,10 +381,10 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         &self,
         upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<(String, String), RustcPullError> {
-        match self.context.config.base_commit {
-            BaseCommit::Latest => self.bump_version_latest(upstream_repo, upstream_commit),
-            BaseCommit::Nightly => self.bump_version_nightly(upstream_repo, upstream_commit),
+    ) -> Result<VersionBump, RustcPullError> {
+        match self.context.config.pull_mode {
+            PullMode::Latest => self.bump_version_latest(upstream_repo, upstream_commit),
+            PullMode::Nightly => self.bump_version_nightly(upstream_repo, upstream_commit),
         }
     }
 
@@ -384,7 +392,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         &self,
         upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<(String, String), RustcPullError> {
+    ) -> Result<VersionBump, RustcPullError> {
         // The upstream commit that we want to pull
         let upstream_sha = if let Some(sha) = upstream_commit {
             sha.clone()
@@ -436,14 +444,17 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
 This updates the rust-version file to {upstream_sha}."#,
         );
 
-        Ok((upstream_sha, prep_message))
+        Ok(VersionBump {
+            upstream_sha,
+            prep_message,
+        })
     }
 
     fn bump_version_nightly(
         &self,
         upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<(String, String), RustcPullError> {
+    ) -> Result<VersionBump, RustcPullError> {
         const MANIFEST_URL: &str = "https://static.rust-lang.org/dist/channel-rust-nightly.toml";
 
         if upstream_commit.is_some() {
@@ -482,7 +493,7 @@ This updates the rust-version file to {upstream_sha}."#,
             })?;
 
         // Parse the nightly manifest file to get the latest nightly date and the corresponding
-        // upstream SHA for cargo.
+        // upstream SHA for rust
         let nightly_manifest = ureq::get(MANIFEST_URL)
             .call()
             .with_context(|| anyhow::anyhow!("cannot fetch nightly manifest from {MANIFEST_URL}"))?
@@ -498,11 +509,11 @@ This updates the rust-version file to {upstream_sha}."#,
         let nightly = format!("nightly-{date}");
         let upstream_sha = nightly_manifest
             .get("pkg")
-            .and_then(|v| v.get("cargo"))
+            .and_then(|v| v.get("rust"))
             .and_then(|v| v.get("git_commit_hash"))
             .and_then(|v| v.as_str())
             .with_context(|| {
-                anyhow::anyhow!("cannot find `pkg.cargo.git_commit_hash` key in nightly manifest")
+                anyhow::anyhow!("cannot find `pkg.rust.git_commit_hash` key in nightly manifest")
             })?
             .to_string();
 
@@ -520,7 +531,10 @@ This updates the rust-version file to {upstream_sha}."#,
 This updates the rust-toolchain.toml file to {nightly}."#,
         );
 
-        Ok((upstream_sha, prep_message))
+        Ok(VersionBump {
+            upstream_sha,
+            prep_message,
+        })
     }
 }
 

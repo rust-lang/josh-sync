@@ -4,7 +4,7 @@ use rustc_josh_sync::SyncContext;
 use rustc_josh_sync::config::{JoshConfig, load_config};
 use rustc_josh_sync::josh::{JoshProxy, try_install_josh_proxy};
 use rustc_josh_sync::sync::{
-    BaseCommit, DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, RustcPullError,
+    DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, PullMode, RustcPullError,
 };
 use rustc_josh_sync::utils::{get_current_head_sha, prompt, run_command};
 use std::path::{Path, PathBuf};
@@ -93,7 +93,7 @@ fn main() -> anyhow::Result<()> {
                 post_pull: vec![],
                 subtree_filter: None,
                 filter_version: FilterVersion::latest(),
-                base_commit: BaseCommit::default(),
+                pull_mode: PullMode::default(),
             };
             config
                 .write(Path::new(DEFAULT_CONFIG_PATH))
@@ -195,15 +195,16 @@ https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{username}:{branch}?quick_pul
     Ok(())
 }
 
-fn rust_version(config: &JoshConfig, rust_version_path: &Path) -> Option<String> {
+/// Return the latest upstream Rust SHA from which we have previously pulled, if any previous pull has happened.
+fn last_pulled_upstream_sha(config: &JoshConfig, rust_version_path: &Path) -> Option<String> {
     let Ok(file) = std::fs::read_to_string(rust_version_path)
         .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
     else {
         return None;
     };
-    Some(match config.base_commit {
-        BaseCommit::Latest => file.trim().to_string(),
-        BaseCommit::Nightly => {
+    Some(match config.pull_mode {
+        PullMode::Latest => file.trim().to_string(),
+        PullMode::Nightly => {
             let toml = file
                 .parse::<Document<_>>()
                 .inspect_err(|err| eprintln!("Cannot parse rust-version file as TOML: {err:?}"))
@@ -231,7 +232,7 @@ fn load_context(
     let config = load_config(&config_path)
         .context("cannot load config. Run the `init` command to initialize it.")?;
     let rust_version_path = rust_version_path.unwrap_or_else(|| config.rust_version_path());
-    let last_upstream_sha = rust_version(&config, &rust_version_path);
+    let last_upstream_sha = last_pulled_upstream_sha(&config, &rust_version_path);
     Ok(SyncContext {
         config,
         last_upstream_sha,

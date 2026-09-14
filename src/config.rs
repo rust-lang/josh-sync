@@ -1,4 +1,4 @@
-use crate::sync::{BaseCommit, FilterVersion};
+use crate::sync::{FilterVersion, PullMode};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 
@@ -38,7 +38,7 @@ pub struct JoshConfig {
     /// What to use as the base commit to sync from. Defaults to the latest commit of the remote
     /// repository.
     #[serde(default)]
-    pub base_commit: BaseCommit,
+    pub pull_mode: PullMode,
 }
 
 impl JoshConfig {
@@ -53,9 +53,9 @@ impl JoshConfig {
     }
 
     pub fn rust_version_path(&self) -> PathBuf {
-        match self.base_commit {
-            BaseCommit::Latest => PathBuf::from(DEFAULT_RUST_VERSION_PATH),
-            BaseCommit::Nightly => PathBuf::from(DEFAULT_RUST_TOOLCHAIN_PATH),
+        match self.pull_mode {
+            PullMode::Latest => PathBuf::from(DEFAULT_RUST_VERSION_PATH),
+            PullMode::Nightly => PathBuf::from(DEFAULT_RUST_TOOLCHAIN_PATH),
         }
     }
 }
