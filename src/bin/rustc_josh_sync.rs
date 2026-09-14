@@ -196,33 +196,57 @@ https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{username}:{branch}?quick_pul
 }
 
 /// Return the latest upstream Rust SHA from which we have previously pulled, if any previous pull has happened.
-fn last_pulled_upstream_sha(config: &JoshConfig, rust_version_path: &Path) -> Option<String> {
-    let Ok(file) = std::fs::read_to_string(rust_version_path)
-        .inspect_err(|err| eprintln!("Cannot load rust-version file: {err:?}"))
-    else {
-        return None;
-    };
-    Some(match config.pull_mode {
+fn last_pulled_upstream_sha(
+    config: &JoshConfig,
+    rust_version_path: &Path,
+) -> anyhow::Result<Option<String>> {
+    if !rust_version_path.is_file() {
+        eprintln!(
+            "rust-version file at {} does not exist, assuming no previous pull has happened",
+            rust_version_path.display()
+        );
+        return Ok(None);
+    }
+    let file = std::fs::read_to_string(rust_version_path).map_err(|err| {
+        anyhow::anyhow!(
+            "cannot read rust-version file at {}: {err:?}",
+            rust_version_path.display()
+        )
+    })?;
+    Ok(Some(match config.pull_mode {
         PullMode::Latest => file.trim().to_string(),
         PullMode::Nightly => {
-            let toml = file
-                .parse::<Document<_>>()
-                .inspect_err(|err| eprintln!("Cannot parse rust-version file as TOML: {err:?}"))
-                .ok()?;
-            let nightly = toml.get("toolchain")?.get("channel")?.as_str()?;
+            let toml = file.parse::<Document<_>>().map_err(|err| {
+                anyhow::anyhow!(
+                    "cannot parse rust-toolchain file as TOML at {}: {err:?}",
+                    rust_version_path.display()
+                )
+            })?;
+            let nightly = toml
+                .get("toolchain")
+                .and_then(|v| v.get("channel"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "cannot find `toolchain.channel` in rust-toolchain file at {}",
+                        rust_version_path.display()
+                    )
+                })?;
             run_command(
                 &["rustc", &format!("+{nightly}"), "--version", "--verbose"],
                 false,
-            )
-            .inspect_err(|err| eprintln!("Cannot run rustc to get the commit hash: {err:?}"))
-            .ok()?
+            )?
             .lines()
-            .find(|line| line.starts_with("commit-hash: "))?
-            .split_whitespace()
-            .last()?
+            .find(|line| line.starts_with("commit-hash: "))
+            .and_then(|line| line.split_whitespace().last())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "cannot find commit-hash in `rustc +{nightly} --version --verbose` output"
+                )
+            })?
             .to_string()
         }
-    })
+    }))
 }
 
 fn load_context(
@@ -232,7 +256,7 @@ fn load_context(
     let config = load_config(&config_path)
         .context("cannot load config. Run the `init` command to initialize it.")?;
     let rust_version_path = rust_version_path.unwrap_or_else(|| config.rust_version_path());
-    let last_upstream_sha = last_pulled_upstream_sha(&config, &rust_version_path);
+    let last_upstream_sha = last_pulled_upstream_sha(&config, &rust_version_path)?;
     Ok(SyncContext {
         config,
         last_upstream_sha,
