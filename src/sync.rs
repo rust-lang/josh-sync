@@ -6,6 +6,7 @@ use crate::utils::{get_current_head_sha, run_command_at};
 use crate::utils::{run_command, stream_command};
 use anyhow::{Context, Error};
 use std::path::{Path, PathBuf};
+use toml_edit::{Document, DocumentMut};
 
 pub const DEFAULT_UPSTREAM_REPO: &str = "rust-lang/rust";
 
@@ -38,8 +39,22 @@ impl FilterVersion {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Copy, Clone, Default)]
+pub enum PullMode {
+    /// Sync from the latest commit in the repo.
+    #[default]
+    Latest,
+    /// Sync from the latest nightly commit.
+    Nightly,
+}
+
 pub struct PullResult {
     pub merge_commit_message: String,
+}
+
+struct VersionBump {
+    prep_message: String,
+    upstream_sha: String,
 }
 
 pub struct GitSync {
@@ -63,38 +78,7 @@ impl GitSync {
         upstream_commit: Option<String>,
         allow_noop: bool,
     ) -> Result<PullResult, RustcPullError> {
-        // The upstream commit that we want to pull
-        let upstream_sha = if let Some(sha) = upstream_commit {
-            sha
-        } else {
-            let out = run_command(
-                [
-                    "git",
-                    "ls-remote",
-                    &format!("https://github.com/{upstream_repo}"),
-                    "HEAD",
-                ],
-                self.verbose,
-            )
-            .context("cannot fetch upstream commit")?;
-            out.split_whitespace()
-                .next()
-                .unwrap_or_else(|| panic!("Could not obtain Rust repo HEAD from remote: '{out}'"))
-                .to_owned()
-        };
-
         ensure_clean_git_state(self.verbose)?;
-
-        // Make sure josh is running.
-        let josh = self
-            .proxy
-            .start(&self.context.config)
-            .context("cannot start josh-proxy")?;
-        let josh_url = josh.git_url(
-            &upstream_repo,
-            Some(&upstream_sha),
-            &construct_josh_filter(&self.context.config),
-        );
 
         let orig_head = get_current_head_sha(self.verbose)?;
         println!(
@@ -104,48 +88,18 @@ impl GitSync {
                 .as_deref()
                 .unwrap_or("<none>"),
         );
-        println!("new upstream base: {upstream_sha}");
         println!("original local HEAD: {orig_head}");
-
-        // If the upstream SHA hasn't changed from the latest sync, there is nothing to pull
-        // We distinguish this situation for tools that might not want to consider this to
-        // be an error.
-        if let Some(previous_base_commit) = self.context.last_upstream_sha.as_ref() {
-            if *previous_base_commit == upstream_sha {
-                return Err(RustcPullError::NothingToPull);
-            }
-        }
 
         // Create a checkpoint to which we reset if something unusual happens
         let mut git_reset = GitResetOnDrop::new(orig_head, self.verbose);
 
-        // Update the last upstream SHA file. As a separate commit, since making it part of
-        // the merge has confused the heck out of josh in the past.
-        // We pass `--no-verify` to avoid running git hooks.
-        // We do this before the merge so that if there are merge conflicts, we have
-        // the right rust-version file while resolving them.
-        std::fs::write(
-            &self.context.last_upstream_sha_path,
-            &format!("{upstream_sha}\n"),
-        )
-        .with_context(|| {
-            anyhow::anyhow!(
-                "cannot write upstream SHA to {}",
-                self.context.last_upstream_sha_path.display()
-            )
-        })?;
+        let VersionBump {
+            upstream_sha,
+            prep_message,
+        } = self.bump_version(&upstream_repo, &upstream_commit)?;
+        println!("new upstream base: {upstream_sha}");
 
-        let prep_message = format!(
-            r#"Prepare for merging from {upstream_repo}
-
-This updates the rust-version file to {upstream_sha}."#,
-        );
-
-        let rust_version_path = self
-            .context
-            .last_upstream_sha_path
-            .to_string_lossy()
-            .to_string();
+        let rust_version_path = self.context.rust_version_path.to_string_lossy();
         // Add the file to git index, in case this is the first time we perform the sync
         // Otherwise `git commit <file>` below wouldn't work.
         run_command(&["git", "add", &rust_version_path], self.verbose)?;
@@ -161,6 +115,17 @@ This updates the rust-version file to {upstream_sha}."#,
             self.verbose,
         )
         .context("cannot create preparation commit")?;
+
+        // Make sure josh is running.
+        let josh = self
+            .proxy
+            .start(&self.context.config)
+            .context("cannot start josh-proxy")?;
+        let josh_url = josh.git_url(
+            &upstream_repo,
+            Some(&upstream_sha),
+            &construct_josh_filter(&self.context.config),
+        );
 
         // Fetch given rustc commit.
         run_command(&["git", "fetch", &josh_url], self.verbose)
@@ -409,6 +374,167 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
             self.context.config.repo
         );
         Ok(())
+    }
+
+    /// Returns a tuple of the (upstream_sha, prep_message) to be used for the pull.
+    fn bump_version(
+        &self,
+        upstream_repo: &str,
+        upstream_commit: &Option<String>,
+    ) -> Result<VersionBump, RustcPullError> {
+        match self.context.config.pull_mode {
+            PullMode::Latest => self.bump_version_latest(upstream_repo, upstream_commit),
+            PullMode::Nightly => self.bump_version_nightly(upstream_repo, upstream_commit),
+        }
+    }
+
+    fn bump_version_latest(
+        &self,
+        upstream_repo: &str,
+        upstream_commit: &Option<String>,
+    ) -> Result<VersionBump, RustcPullError> {
+        // The upstream commit that we want to pull
+        let upstream_sha = if let Some(sha) = upstream_commit {
+            sha.clone()
+        } else {
+            let out = run_command(
+                [
+                    "git",
+                    "ls-remote",
+                    &format!("https://github.com/{upstream_repo}"),
+                    "HEAD",
+                ],
+                self.verbose,
+            )
+            .context("cannot fetch upstream commit")?;
+            out.split_whitespace()
+                .next()
+                .unwrap_or_else(|| panic!("Could not obtain Rust repo HEAD from remote: '{out}'"))
+                .to_owned()
+        };
+
+        // If the upstream SHA hasn't changed from the latest sync, there is nothing to pull
+        // We distinguish this situation for tools that might not want to consider this to
+        // be an error.
+        if let Some(previous_base_commit) = self.context.last_upstream_sha.as_ref() {
+            if *previous_base_commit == upstream_sha {
+                return Err(RustcPullError::NothingToPull);
+            }
+        }
+
+        // Update the last upstream SHA file. As a separate commit, since making it part of
+        // the merge has confused the heck out of josh in the past.
+        // We pass `--no-verify` to avoid running git hooks.
+        // We do this before the merge so that if there are merge conflicts, we have
+        // the right rust-version file while resolving them.
+        std::fs::write(
+            &self.context.rust_version_path,
+            &format!("{upstream_sha}\n"),
+        )
+        .with_context(|| {
+            anyhow::anyhow!(
+                "cannot write upstream SHA to {}",
+                self.context.rust_version_path.display()
+            )
+        })?;
+
+        let prep_message = format!(
+            r#"Prepare for merging from {upstream_repo}
+
+This updates the rust-version file to {upstream_sha}."#,
+        );
+
+        Ok(VersionBump {
+            upstream_sha,
+            prep_message,
+        })
+    }
+
+    fn bump_version_nightly(
+        &self,
+        upstream_repo: &str,
+        upstream_commit: &Option<String>,
+    ) -> Result<VersionBump, RustcPullError> {
+        const MANIFEST_URL: &str = "https://static.rust-lang.org/dist/channel-rust-nightly.toml";
+
+        if upstream_commit.is_some() {
+            return Err(RustcPullError::PullFailed(anyhow::anyhow!(
+                "Cannot specify an upstream commit when using nightly sync mode"
+            )));
+        }
+        let mut toml = std::fs::read_to_string(&self.context.rust_version_path)
+            .with_context(|| {
+                anyhow::anyhow!(
+                    "cannot read rust-toolchain.toml file from {}",
+                    self.context.rust_version_path.display()
+                )
+            })?
+            .parse::<DocumentMut>()
+            .with_context(|| {
+                anyhow::anyhow!(
+                    "cannot parse rust-toolchain.toml file from {}",
+                    self.context.rust_version_path.display()
+                )
+            })?;
+        let channel = toml
+            .get_mut("toolchain")
+            .with_context(|| {
+                anyhow::anyhow!(
+                    "cannot find `toolchain` key in rust-toolchain.toml file from {}",
+                    self.context.rust_version_path.display()
+                )
+            })?
+            .get_mut("channel")
+            .with_context(|| {
+                anyhow::anyhow!(
+                    "cannot find `channel` key in rust-toolchain.toml file from {}",
+                    self.context.rust_version_path.display()
+                )
+            })?;
+
+        // Parse the nightly manifest file to get the latest nightly date and the corresponding
+        // upstream SHA for rust
+        let nightly_manifest = ureq::get(MANIFEST_URL)
+            .call()
+            .with_context(|| anyhow::anyhow!("cannot fetch nightly manifest from {MANIFEST_URL}"))?
+            .body_mut()
+            .read_to_string()
+            .with_context(|| anyhow::anyhow!("cannot read nightly manifest"))?
+            .parse::<Document<_>>()
+            .with_context(|| anyhow::anyhow!("cannot parse nightly manifest as TOML"))?;
+        let date = nightly_manifest
+            .get("date")
+            .and_then(|v| v.as_str())
+            .with_context(|| anyhow::anyhow!("cannot find `date` key in nightly manifest"))?;
+        let nightly = format!("nightly-{date}");
+        let upstream_sha = nightly_manifest
+            .get("pkg")
+            .and_then(|v| v.get("rust"))
+            .and_then(|v| v.get("git_commit_hash"))
+            .and_then(|v| v.as_str())
+            .with_context(|| {
+                anyhow::anyhow!("cannot find `pkg.rust.git_commit_hash` key in nightly manifest")
+            })?
+            .to_string();
+
+        *channel = toml_edit::value(&nightly);
+        std::fs::write(&self.context.rust_version_path, toml.to_string()).with_context(|| {
+            anyhow::anyhow!(
+                "cannot write rust-toolchain.toml file to {}",
+                self.context.rust_version_path.display()
+            )
+        })?;
+
+        let prep_message = format!(
+            r#"Prepare for merging from {upstream_repo}
+
+This updates the rust-toolchain.toml file to {nightly}."#,
+        );
+
+        Ok(VersionBump {
+            upstream_sha,
+            prep_message,
+        })
     }
 }
 

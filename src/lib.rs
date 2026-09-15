@@ -1,5 +1,6 @@
-use crate::config::JoshConfig;
 use std::path::PathBuf;
+
+use crate::config::JoshConfig;
 
 pub mod config;
 pub mod josh;
@@ -13,5 +14,5 @@ pub struct SyncContext {
     /// if a pull was already performed at least once.
     pub last_upstream_sha: Option<String>,
     /// Path to a file that stores the last synced upstream SHA.
-    pub last_upstream_sha_path: PathBuf,
+    pub rust_version_path: PathBuf,
 }

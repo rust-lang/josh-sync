@@ -1,12 +1,16 @@
-use crate::sync::FilterVersion;
+use crate::sync::{FilterVersion, PullMode};
 use anyhow::Context;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+const DEFAULT_RUST_VERSION_PATH: &str = "rust-version";
+const DEFAULT_RUST_TOOLCHAIN_PATH: &str = "rust-toolchain.toml";
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct JoshConfig {
     #[serde(default = "default_org")]
     pub org: String,
+    /// Name of the subtree repository. For example `rustc-dev-guide`.
     pub repo: String,
     /// Relative path where the subtree is located in rust-lang/rust.
     /// For example `src/doc/rustc-dev-guide`.
@@ -31,6 +35,10 @@ pub struct JoshConfig {
         with = "filter_version"
     )]
     pub filter_version: FilterVersion,
+    /// What to use as the base commit to sync from. Defaults to the latest commit of the remote
+    /// repository.
+    #[serde(default)]
+    pub pull_mode: PullMode,
 }
 
 impl JoshConfig {
@@ -42,6 +50,13 @@ impl JoshConfig {
         let config = toml::to_string_pretty(self).context("cannot serialize config")?;
         std::fs::write(path, config).context("cannot write config")?;
         Ok(())
+    }
+
+    pub fn rust_version_path(&self) -> PathBuf {
+        match self.pull_mode {
+            PullMode::Latest => PathBuf::from(DEFAULT_RUST_VERSION_PATH),
+            PullMode::Nightly => PathBuf::from(DEFAULT_RUST_TOOLCHAIN_PATH),
+        }
     }
 }
 

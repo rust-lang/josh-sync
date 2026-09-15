@@ -16,6 +16,8 @@ serde = { version = "1", features = ["derive"] }
 urlencoding = "2"
 which = "8"
 regex = "1.12.3"
+toml_edit = { version = "0.25.13", features = ["serde"] }
+ureq = { version = "3.4.1", default-features = false, features = ["rustls"] }
 
 [profile.release]
 debug = "line-tables-only"
