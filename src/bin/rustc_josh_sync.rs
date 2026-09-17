@@ -6,7 +6,7 @@ use rustc_josh_sync::josh::{JoshProxy, try_install_josh_proxy};
 use rustc_josh_sync::sync::{
     DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, PullMode, RustcPullError,
 };
-use rustc_josh_sync::utils::{get_current_head_sha, prompt, run_command};
+use rustc_josh_sync::utils::{get_current_head_sha, prompt};
 use std::path::{Path, PathBuf};
 use toml_edit::Document;
 
@@ -232,19 +232,20 @@ fn last_pulled_upstream_sha(
                         rust_version_path.display()
                     )
                 })?;
-            run_command(
-                &["rustc", &format!("+{nightly}"), "--version", "--verbose"],
-                false,
-            )?
-            .lines()
-            .find(|line| line.starts_with("commit-hash: "))
-            .and_then(|line| line.split_whitespace().last())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "cannot find commit-hash in `rustc +{nightly} --version --verbose` output"
-                )
-            })?
-            .to_string()
+            println!("Found previous nightly version {nightly}");
+
+            let nightly_date = nightly.strip_prefix("nightly-").unwrap_or(nightly);
+            let mut response = ureq::get(format!(
+                "https://static.rust-lang.org/dist/{nightly_date}/channel-rust-nightly-git-commit-hash.txt"
+            )).call()?;
+            let text = response.body_mut().read_to_string()?;
+            if !response.status().is_success() {
+                return Err(anyhow::anyhow!(
+                    "Cannot get commit hash of {nightly} from CI: {}\n{text}",
+                    response.status(),
+                ));
+            }
+            text.trim().to_string()
         }
     }))
 }
