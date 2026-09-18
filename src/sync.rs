@@ -5,6 +5,7 @@ use crate::utils::{ensure_clean_git_state, prompt};
 use crate::utils::{get_current_head_sha, run_command_at};
 use crate::utils::{run_command, stream_command};
 use anyhow::{Context, Error};
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, DocumentMut};
 
@@ -52,9 +53,24 @@ pub struct PullResult {
     pub merge_commit_message: String,
 }
 
-struct VersionBump {
-    prep_message: String,
-    upstream_sha: String,
+enum BumpedVersion {
+    Latest {
+        upstream_sha: String,
+    },
+    Nightly {
+        upstream_sha: String,
+        /// e.g. nightly-2026-09-18
+        nightly: String,
+    },
+}
+
+impl BumpedVersion {
+    fn upstream_sha(&self) -> String {
+        match self {
+            BumpedVersion::Latest { upstream_sha } => upstream_sha.clone(),
+            BumpedVersion::Nightly { upstream_sha, .. } => upstream_sha.clone(),
+        }
+    }
 }
 
 pub struct GitSync {
@@ -81,23 +97,45 @@ impl GitSync {
         ensure_clean_git_state(self.verbose)?;
 
         let orig_head = get_current_head_sha(self.verbose)?;
-        println!(
-            "previous upstream base: {}",
-            self.context
-                .last_upstream_sha
-                .as_deref()
-                .unwrap_or("<none>"),
-        );
+        let previous_upstream_sha = self
+            .context
+            .last_upstream_sha
+            .as_deref()
+            .unwrap_or("<none>");
+        println!("previous upstream base: {previous_upstream_sha}");
         println!("original local HEAD: {orig_head}");
 
         // Create a checkpoint to which we reset if something unusual happens
         let mut git_reset = GitResetOnDrop::new(orig_head, self.verbose);
 
-        let VersionBump {
-            upstream_sha,
-            prep_message,
-        } = self.bump_version(&upstream_repo, &upstream_commit)?;
+        let bumped_version =
+            self.bump_version_and_get_latest_upstream_sha(&upstream_repo, &upstream_commit)?;
+        let upstream_sha = bumped_version.upstream_sha();
+
         println!("new upstream base: {upstream_sha}");
+
+        let mut prep_message = format!(
+            r#"Prepare for merging from {upstream_repo}
+
+"#
+        );
+        match &bumped_version {
+            BumpedVersion::Latest { upstream_sha } => write!(
+                prep_message,
+                "This updates the rust-version file to {upstream_sha}."
+            )
+            .unwrap(),
+            BumpedVersion::Nightly {
+                nightly,
+                upstream_sha,
+            } => {
+                write!(
+                    prep_message,
+                    "This updates the rust-toolchain.toml file to {nightly} ({upstream_sha})."
+                )
+                .unwrap();
+            }
+        };
 
         let rust_version_path = self.context.rust_version_path.to_string_lossy();
         // Add the file to git index, in case this is the first time we perform the sync
@@ -148,18 +186,29 @@ impl GitSync {
         let incoming_ref = run_command(["git", "rev-parse", "FETCH_HEAD"], self.verbose)?;
         println!("incoming ref: {incoming_ref}");
 
+        let upstream_label = match &bumped_version {
+            BumpedVersion::Latest { upstream_sha } => {
+                format!("'{}'", &upstream_sha[..12])
+            }
+            BumpedVersion::Nightly {
+                nightly,
+                upstream_sha,
+            } => {
+                format!("'{}' ({nightly})", &upstream_sha[..12])
+            }
+        };
         let merge_message = format!(
-            r#"Merge ref '{upstream_head_short}' from {upstream_repo}
+            r#"Merge ref {upstream_label} from {upstream_repo}
 
 Pull recent changes from https://github.com/{upstream_repo} via Josh.
 
-Upstream ref: {upstream_repo}@{upstream_sha}
+Previous upstream ref: {upstream_repo}@{previous_upstream_sha}
+New upstream ref: {upstream_repo}@{upstream_sha}
 Filtered ref: {sub_org}/{sub_repo}@{incoming_ref}
 Upstream diff: https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{prev_upstream_sha}...{upstream_sha}
 
 This merge was created using https://github.com/rust-lang/josh-sync.
 "#,
-            upstream_head_short = &upstream_sha[..12],
             sub_org = self.context.config.org,
             sub_repo = self.context.config.repo,
             prev_upstream_sha = self
@@ -376,15 +425,16 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         Ok(())
     }
 
-    /// Returns a tuple of the (upstream_sha, prep_message) to be used for the pull.
-    fn bump_version(
+    /// Returns the upstream_sha to be used for the pull, and update the version file to this
+    /// version "in-place" on disk.
+    fn bump_version_and_get_latest_upstream_sha(
         &self,
         upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<VersionBump, RustcPullError> {
+    ) -> Result<BumpedVersion, RustcPullError> {
         match self.context.config.pull_mode {
             PullMode::Latest => self.bump_version_latest(upstream_repo, upstream_commit),
-            PullMode::Nightly => self.bump_version_nightly(upstream_repo, upstream_commit),
+            PullMode::Nightly => self.bump_version_nightly(upstream_commit),
         }
     }
 
@@ -392,7 +442,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         &self,
         upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<VersionBump, RustcPullError> {
+    ) -> Result<BumpedVersion, RustcPullError> {
         // The upstream commit that we want to pull
         let upstream_sha = if let Some(sha) = upstream_commit {
             sha.clone()
@@ -438,23 +488,13 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
             )
         })?;
 
-        let prep_message = format!(
-            r#"Prepare for merging from {upstream_repo}
-
-This updates the rust-version file to {upstream_sha}."#,
-        );
-
-        Ok(VersionBump {
-            upstream_sha,
-            prep_message,
-        })
+        Ok(BumpedVersion::Latest { upstream_sha })
     }
 
     fn bump_version_nightly(
         &self,
-        upstream_repo: &str,
         upstream_commit: &Option<String>,
-    ) -> Result<VersionBump, RustcPullError> {
+    ) -> Result<BumpedVersion, RustcPullError> {
         const MANIFEST_URL: &str = "https://static.rust-lang.org/dist/channel-rust-nightly.toml";
 
         if upstream_commit.is_some() {
@@ -525,15 +565,9 @@ This updates the rust-version file to {upstream_sha}."#,
             )
         })?;
 
-        let prep_message = format!(
-            r#"Prepare for merging from {upstream_repo}
-
-This updates the rust-toolchain.toml file to {nightly}."#,
-        );
-
-        Ok(VersionBump {
+        Ok(BumpedVersion::Nightly {
             upstream_sha,
-            prep_message,
+            nightly,
         })
     }
 }
