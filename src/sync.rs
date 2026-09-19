@@ -290,8 +290,6 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
     pub fn rustc_push(&self, username: &str, branch: &str) -> anyhow::Result<()> {
         ensure_clean_git_state(self.verbose)?;
 
-        let base_upstream_sha = self.context.last_upstream_sha.clone().unwrap_or_default();
-
         // Make sure josh is running.
         let josh = self
             .proxy
@@ -307,10 +305,9 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         let rustc_git =
             prepare_rustc_checkout(self.verbose).context("cannot prepare rustc checkout")?;
 
-        // Prepare the branch. Pushing works much better if we use as base exactly
-        // the commit that we pulled from last time, so we use the `rust-version`
-        // file to find out which commit that would be.
-        println!("Preparing {user_upstream_url} (base: {base_upstream_sha})...");
+        // Prepare the branch. We need the `main` branch in the user's repo to be up-to-date
+        // with upstream as we;ll use that as base for the new push.
+        println!("Preparing {user_upstream_url}...");
 
         // Check if the remote branch doesn't already exist
         if run_command_at(
@@ -325,13 +322,12 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
             ));
         }
 
-        // Download the base upstream SHA
+        // Download the laetst upstream commit, to use it as base for the new branch.
         run_command_at(
             &[
                 "git",
                 "fetch",
                 &format!("https://github.com/{DEFAULT_UPSTREAM_REPO}"),
-                &base_upstream_sha,
             ],
             &rustc_git,
             self.verbose,
@@ -344,7 +340,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
                 "git",
                 "push",
                 &user_upstream_url,
-                &format!("{base_upstream_sha}:refs/heads/{branch}"),
+                &format!("FETCH_HEAD:refs/heads/main"),
             ],
             &rustc_git,
             self.verbose,
@@ -355,7 +351,14 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         // Do the actual push from the subtree git repo
         println!("Pushing changes...");
         run_command(
-            &["git", "push", &josh_url, &format!("HEAD:{branch}")],
+            &[
+                "git",
+                "push",
+                &josh_url,
+                &format!("HEAD:{branch}"),
+                "-o",
+                "base=main",
+            ],
             self.verbose,
         )?;
         println!();
