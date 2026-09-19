@@ -33,6 +33,9 @@ enum Command {
 
         /// Override the rustc commit that we should pull from.
         /// By default, josh-sync will pull from rustc's HEAD (latest commit).
+        ///
+        /// If you use the "Nightly" pull mode, set this to a nightly date (e.g. `2026-09-19`),
+        /// and josh-sync will figure out the corresponding upstream commit from it.
         #[clap(long)]
         upstream_commit: Option<String>,
 
