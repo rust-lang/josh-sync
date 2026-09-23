@@ -106,6 +106,22 @@ pub fn get_current_head_sha(verbose: bool) -> anyhow::Result<String> {
     run_command(&["git", "rev-parse", "HEAD"], verbose).context("failed to get current commit")
 }
 
+/// Map a nightly date (e.g. `2026-09-19`) to its corresponding `rust-lang/rust` commit SHA.
+pub fn nightly_date_to_sha(nightly_date: &str) -> anyhow::Result<String> {
+    let mut response = ureq::get(format!(
+        "https://static.rust-lang.org/dist/{nightly_date}/channel-rust-nightly-git-commit-hash.txt"
+    ))
+    .call()?;
+    let text = response.body_mut().read_to_string()?;
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Cannot get commit hash of {nightly_date} from CI: {}\n{text}",
+            response.status(),
+        ));
+    }
+    Ok(text.trim().to_string())
+}
+
 /// Ask a prompt to user and return true if they responded with `y`.
 /// Returns `default_response` on CI.
 pub fn prompt(prompt: &str, default_response: bool) -> bool {

@@ -1,7 +1,7 @@
 use crate::SyncContext;
 use crate::config::{JoshConfig, PostPullOperation};
 use crate::josh::{JoshFilter, JoshProxy, try_install_josh_filter};
-use crate::utils::{ensure_clean_git_state, prompt};
+use crate::utils::{ensure_clean_git_state, nightly_date_to_sha, prompt};
 use crate::utils::{get_current_head_sha, run_command_at};
 use crate::utils::{run_command, stream_command};
 use anyhow::{Context, Error};
@@ -108,8 +108,8 @@ impl GitSync {
         // Create a checkpoint to which we reset if something unusual happens
         let mut git_reset = GitResetOnDrop::new(orig_head, self.verbose);
 
-        let bumped_version =
-            self.bump_version_and_get_latest_upstream_sha(&upstream_repo, &upstream_commit)?;
+        let bumped_version = self
+            .bump_version_and_get_latest_upstream_sha(&upstream_repo, upstream_commit.as_ref())?;
         let upstream_sha = bumped_version.upstream_sha();
 
         println!("new upstream base: {upstream_sha}");
@@ -430,7 +430,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
     fn bump_version_and_get_latest_upstream_sha(
         &self,
         upstream_repo: &str,
-        upstream_commit: &Option<String>,
+        upstream_commit: Option<&String>,
     ) -> Result<BumpedVersion, RustcPullError> {
         match self.context.config.pull_mode {
             PullMode::Latest => self.bump_version_latest(upstream_repo, upstream_commit),
@@ -441,7 +441,7 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
     fn bump_version_latest(
         &self,
         upstream_repo: &str,
-        upstream_commit: &Option<String>,
+        upstream_commit: Option<&String>,
     ) -> Result<BumpedVersion, RustcPullError> {
         // The upstream commit that we want to pull
         let upstream_sha = if let Some(sha) = upstream_commit {
@@ -493,15 +493,10 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
 
     fn bump_version_nightly(
         &self,
-        upstream_commit: &Option<String>,
+        upstream_commit: Option<&String>,
     ) -> Result<BumpedVersion, RustcPullError> {
         const MANIFEST_URL: &str = "https://static.rust-lang.org/dist/channel-rust-nightly.toml";
 
-        if upstream_commit.is_some() {
-            return Err(RustcPullError::PullFailed(anyhow::anyhow!(
-                "Cannot specify an upstream commit when using nightly sync mode"
-            )));
-        }
         let mut toml = std::fs::read_to_string(&self.context.rust_version_path)
             .with_context(|| {
                 anyhow::anyhow!(
@@ -532,31 +527,48 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
                 )
             })?;
 
-        // Parse the nightly manifest file to get the latest nightly date and the corresponding
-        // upstream SHA for rust
-        let nightly_manifest = ureq::get(MANIFEST_URL)
-            .call()
-            .with_context(|| anyhow::anyhow!("cannot fetch nightly manifest from {MANIFEST_URL}"))?
-            .body_mut()
-            .read_to_string()
-            .with_context(|| anyhow::anyhow!("cannot read nightly manifest"))?
-            .parse::<Document<_>>()
-            .with_context(|| anyhow::anyhow!("cannot parse nightly manifest as TOML"))?;
-        let date = nightly_manifest
-            .get("date")
-            .and_then(|v| v.as_str())
-            .with_context(|| anyhow::anyhow!("cannot find `date` key in nightly manifest"))?;
-        let nightly = format!("nightly-{date}");
-        let upstream_sha = nightly_manifest
-            .get("pkg")
-            .and_then(|v| v.get("rust"))
-            .and_then(|v| v.get("git_commit_hash"))
-            .and_then(|v| v.as_str())
-            .with_context(|| {
-                anyhow::anyhow!("cannot find `pkg.rust.git_commit_hash` key in nightly manifest")
-            })?
-            .to_string();
+        let (nightly, upstream_sha) = match upstream_commit {
+            Some(nightly_date) => {
+                // Here we treat `upstream_commit` as a nightly date
+                let upstream_sha = nightly_date_to_sha(&nightly_date)?;
+                (format!("nightly-{nightly_date}"), upstream_sha)
+            }
+            None => {
+                // Parse the nightly manifest file to get the latest nightly date and the corresponding
+                // upstream SHA for rust
+                let nightly_manifest = ureq::get(MANIFEST_URL)
+                    .call()
+                    .with_context(|| {
+                        anyhow::anyhow!("cannot fetch nightly manifest from {MANIFEST_URL}")
+                    })?
+                    .body_mut()
+                    .read_to_string()
+                    .with_context(|| anyhow::anyhow!("cannot read nightly manifest"))?
+                    .parse::<Document<_>>()
+                    .with_context(|| anyhow::anyhow!("cannot parse nightly manifest as TOML"))?;
+                let date = nightly_manifest
+                    .get("date")
+                    .and_then(|v| v.as_str())
+                    .with_context(|| {
+                        anyhow::anyhow!("cannot find `date` key in nightly manifest")
+                    })?;
+                let nightly = format!("nightly-{date}");
+                let upstream_sha = nightly_manifest
+                    .get("pkg")
+                    .and_then(|v| v.get("rust"))
+                    .and_then(|v| v.get("git_commit_hash"))
+                    .and_then(|v| v.as_str())
+                    .with_context(|| {
+                        anyhow::anyhow!(
+                            "cannot find `pkg.rust.git_commit_hash` key in nightly manifest"
+                        )
+                    })?
+                    .to_string();
+                (nightly, upstream_sha)
+            }
+        };
 
+        // Override the nightly version in the TOML file and write it back
         *channel = toml_edit::value(&nightly);
         std::fs::write(&self.context.rust_version_path, toml.to_string()).with_context(|| {
             anyhow::anyhow!(
