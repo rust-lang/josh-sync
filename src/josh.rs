@@ -1,4 +1,5 @@
 use crate::config::JoshConfig;
+use crate::sync::GitProtocol;
 use crate::utils::{is_inside_ci, is_null_sha, run_command_by_path};
 use anyhow::Context;
 use std::net::{SocketAddr, TcpStream};
@@ -165,11 +166,21 @@ pub struct RunningJoshProxy {
 }
 
 impl RunningJoshProxy {
-    pub fn git_url(&self, repo: &str, commit: Option<&str>, filter: &str) -> String {
+    pub fn git_url(
+        &self,
+        repo: &str,
+        commit: Option<&str>,
+        filter: &str,
+        protocol: &GitProtocol,
+    ) -> String {
         let commit = commit.map(|c| format!("@{c}")).unwrap_or_default();
         let filter = urlencoding::encode(filter);
+        let protocol = match protocol {
+            GitProtocol::Https => "http",
+            GitProtocol::Ssh => "ssh",
+        };
         format!(
-            "http://localhost:{}/{repo}.git{commit}{filter}.git",
+            "{protocol}://localhost:{}/{repo}.git{commit}{filter}.git",
             self.port
         )
     }
