@@ -73,6 +73,11 @@ impl BumpedVersion {
     }
 }
 
+pub enum GitProtocol {
+    Https,
+    Ssh,
+}
+
 pub struct GitSync {
     context: SyncContext,
     proxy: JoshProxy,
@@ -163,6 +168,7 @@ impl GitSync {
             &upstream_repo,
             Some(&upstream_sha),
             &construct_josh_filter(&self.context.config),
+            &GitProtocol::Https,
         );
 
         // Fetch given rustc commit.
@@ -287,7 +293,12 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
         })
     }
 
-    pub fn rustc_push(&self, username: &str, branch: &str) -> anyhow::Result<()> {
+    pub fn rustc_push(
+        &self,
+        username: &str,
+        branch: &str,
+        protocol: GitProtocol,
+    ) -> anyhow::Result<()> {
         ensure_clean_git_state(self.verbose)?;
 
         let base_upstream_sha = self.context.last_upstream_sha.clone().unwrap_or_default();
@@ -301,8 +312,12 @@ After you fix the conflicts, `git add` the changes and run `git merge --continue
             &format!("{username}/rust"),
             None,
             &construct_josh_filter(&self.context.config),
+            &protocol,
         );
-        let user_upstream_url = format!("https://github.com/{username}/rust");
+        let user_upstream_url = match protocol {
+            GitProtocol::Https => format!("https://github.com/{username}/rust"),
+            GitProtocol::Ssh => format!("ssh://git@github.com/{username}/rust.git"),
+        };
 
         let rustc_git =
             prepare_rustc_checkout(self.verbose).context("cannot prepare rustc checkout")?;
