@@ -236,12 +236,28 @@ This merge was created using https://github.com/rust-lang/josh-sync.
         {
             eprintln!(
                 r"The merge was unsuccessful (maybe there was a conflict?).
-NOT rolling back the branch state, so you can examine it manually.
-After you fix the conflicts, `git add` the changes and run `git merge --continue`."
+NOT rolling back the branch state, so you can examine it manually."
             );
-            eprintln!("{NO_REBASE_WARN}");
-            git_reset.disarm();
-            return Err(RustcPullError::PullFailed(error));
+
+            // A merge conflict has happened. Ask the user if they want to fix it interactively.
+            // If not, we stop the pull.
+            // If yes, we continue forward.
+            if !prompt(
+                r#"
+If you want josh-sync to continue, then:
+1. Do not close this process, otherwise josh-sync will be unable to continue and the pull will have to be restarted.
+2. Manually resolve the merge conflict(s).
+3. Finish the merge (`git add -u && git merge --continue`).
+4. Respond with `y` below.
+
+If you do not want to continue interactively, respond with `n`.
+You can then finish the merge and create the pull PR manually."#,
+                false,
+            ) {
+                eprintln!("{NO_REBASE_WARN}");
+                git_reset.disarm();
+                return Err(RustcPullError::PullFailed(error));
+            }
         }
 
         // Now detect if something has actually been pulled
