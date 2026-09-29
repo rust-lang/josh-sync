@@ -371,7 +371,12 @@ You can then finish the merge and create the pull PR manually."#,
         // Do the actual push from the subtree git repo
         println!("Pushing changes...");
         run_command(
-            &["git", "push", &josh_url, &format!("HEAD:{branch}")],
+            &[
+                "git",
+                "push",
+                &josh_url,
+                &format!("HEAD:refs/heads/{branch}"),
+            ],
             self.verbose,
         )?;
         println!();
