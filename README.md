@@ -73,7 +73,7 @@ jobs:
     with:
       github-app-id: ${{ vars.APP_CLIENT_ID }}
       # Must end with [bot]
-      pr-author: "github-actions[bot]" 
+      pr-author: "github-actions[bot]"
       # If you want the Zulip post functionality
       #zulip-stream-id: 1234   # optional
       #zulip-bot-email: subtree-gha-notif-bot@rust-lang.zulipchat.com # optional
@@ -88,9 +88,11 @@ You will need to have a GitHub app configured on the repository with permissions
 
 ## Git peculiarities
 
-NOTE: If you use Git/SSH protocol to push to your fork of [rust-lang/rust],
-ensure that you have this entry in your Git config,
-else the 2 steps that follow would prompt for a username and password:
+### SSH protocol
+
+If you use the Git/SSH protocol to push to your fork of [rust-lang/rust], you can pass the `--protocol=ssh` flag to `rustc-josh-sync push`.
+
+As an alternative, you could override all HTTPS connections with a SSH connection using this entry in your Git config:
 
 ```
 [url "git@github.com:"]
