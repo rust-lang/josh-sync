@@ -4,7 +4,7 @@ use rustc_josh_sync::SyncContext;
 use rustc_josh_sync::config::{JoshConfig, load_config};
 use rustc_josh_sync::josh::{JoshProxy, try_install_josh_proxy};
 use rustc_josh_sync::sync::{
-    DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, PullMode, RustcPullError,
+    DEFAULT_UPSTREAM_REPO, FilterVersion, GitProtocol, GitSync, PullMode, RustcPullError,
 };
 use rustc_josh_sync::utils::{get_current_head_sha, nightly_date_to_sha, prompt};
 use std::path::{Path, PathBuf};
@@ -57,9 +57,20 @@ enum Command {
 
         /// Your GitHub usename where the fork is located
         username: String,
+
+        /// Which protocol to use to push the resulting commit to your fork's branch.
+        #[clap(long, default_value = "https")]
+        protocol: GitProtocolCli,
+
         #[clap(flatten)]
         shared: SharedArgs,
     },
+}
+
+#[derive(clap::ValueEnum, Clone)]
+enum GitProtocolCli {
+    Https,
+    Ssh,
 }
 
 #[derive(clap::Parser)]
@@ -158,12 +169,17 @@ fn main() -> anyhow::Result<()> {
             username,
             branch,
             shared,
+            protocol,
         } => {
             let ctx = load_context(shared.config_path, shared.rust_version_path)?;
             let josh = get_josh_proxy(shared.josh_proxy, shared.verbose)?;
             let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
+            let protocol = match protocol {
+                GitProtocolCli::Https => GitProtocol::Https,
+                GitProtocolCli::Ssh => GitProtocol::Ssh,
+            };
             if let Err(error) = sync
-                .rustc_push(&username, &branch)
+                .rustc_push(&username, &branch, protocol)
                 .context("cannot perform push")
             {
                 if !shared.verbose {
