@@ -39,25 +39,28 @@ impl JoshProxy {
             .stderr(Stdio::null())
             .spawn()
             .context("failed to start josh-proxy, make sure it is installed")?;
+        let josh_guard = RunningJoshProxy {
+            process: josh,
+            port: JOSH_PORT,
+        };
 
-        // Wait until the port is open. We try every 10ms until 1s passed.
-        for _ in 0..100 {
+        // Wait until the port is open. We try every 10ms until 2s passed.
+        for _ in 0..200 {
             // This will generally fail immediately when the port is still closed.
             let addr = SocketAddr::from(([127, 0, 0, 1], JOSH_PORT));
             let josh_ready = TcpStream::connect_timeout(&addr, Duration::from_millis(1));
 
             if josh_ready.is_ok() {
                 println!("josh up and running");
-                return Ok(RunningJoshProxy {
-                    process: josh,
-                    port: JOSH_PORT,
-                });
+                return Ok(josh_guard);
             }
 
             // Not ready yet.
             std::thread::sleep(Duration::from_millis(10));
         }
-        panic!("Even after waiting for 1s, josh-proxy is still not available.");
+        // Avoid leaving behind a stale process.
+        drop(josh_guard);
+        panic!("Even after waiting for 2s, josh-proxy is still not available.");
     }
 }
 
