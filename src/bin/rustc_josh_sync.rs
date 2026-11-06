@@ -128,7 +128,7 @@ fn main() -> anyhow::Result<()> {
             let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
             match sync.rustc_pull(upstream_repo, upstream_commit, allow_noop) {
                 Ok(result) => {
-                    if !maybe_create_gh_pr(
+                    if !maybe_create_pull_gh_pr(
                         &ctx.config.full_repo_name(),
                         "Rustc pull update",
                         &result.merge_commit_message,
@@ -186,12 +186,20 @@ r? @ghost"#,
                 full_repo = ctx.config.full_repo_name(),
             );
 
-            println!(
-                r#"You can create the rustc PR using the following URL:
+            if !maybe_create_push_gh_pr(
+                &DEFAULT_UPSTREAM_REPO,
+                &title,
+                &merge_msg,
+                &username,
+                &branch,
+            )? {
+                println!(
+                    r#"You can create the rustc PR using the following URL:
 https://github.com/{DEFAULT_UPSTREAM_REPO}/compare/{username}:{branch}?quick_pull=1&title={}&body={}"#,
-                urlencoding::encode(&title),
-                urlencoding::encode(&merge_msg)
-            );
+                    urlencoding::encode(&title),
+                    urlencoding::encode(&merge_msg)
+                );
+            }
         }
     }
 
@@ -258,7 +266,9 @@ fn load_context(
     })
 }
 
-fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Result<bool> {
+/// If the user has `gh` installed, and confirms it, open a PR against the subtree repo
+/// from the local branch.
+fn maybe_create_pull_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Result<bool> {
     if which::which("gh").is_ok()
         && prompt(
             &format!("Do you want to create a {repo} pull PR using the `gh` tool?"),
@@ -275,6 +285,42 @@ fn maybe_create_gh_pr(repo: &str, title: &str, description: &str) -> anyhow::Res
                 description,
                 "--repo",
                 repo,
+            ])
+            .spawn()?
+            .wait()?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// If the user has `gh` installed, and confirms it, open a PR against the upstream repo
+/// (rust-lang/rust) from a fork.
+fn maybe_create_push_gh_pr(
+    upstream_repo: &str,
+    title: &str,
+    description: &str,
+    username: &str,
+    branch: &str,
+) -> anyhow::Result<bool> {
+    if which::which("gh").is_ok()
+        && prompt(
+            &format!("Do you want to create a {upstream_repo} push PR using the `gh` tool?"),
+            false,
+        )
+    {
+        std::process::Command::new("gh")
+            .args(&[
+                "pr",
+                "create",
+                "--title",
+                title,
+                "--body",
+                description,
+                "--repo",
+                upstream_repo,
+                "--head",
+                &format!("{username}:{branch}"),
             ])
             .spawn()?
             .wait()?;
