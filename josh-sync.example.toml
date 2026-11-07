@@ -35,3 +35,13 @@ path = "library/stdarch"
 #[[post-pull]]
 #cmd = ["cargo", "fmt"]
 #commit-message = "reformat"
+
+# Optional configuration for automatically opened pull PRs.
+#[pull-pr]
+# Text added to the PR body.
+#suffix = "@rustbot label +sync-pull"
+
+# Optional configuration for automatically opened push PRs.
+#[push-pr]
+# Text added to the PR body.
+#suffix = "@rustbot label +sync-push"
