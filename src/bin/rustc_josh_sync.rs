@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Parser;
 use rustc_josh_sync::SyncContext;
-use rustc_josh_sync::config::{JoshConfig, load_config};
+use rustc_josh_sync::config::{JoshConfig, PullRequestConfig, load_config};
 use rustc_josh_sync::josh::{JoshProxy, try_install_josh_proxy};
 use rustc_josh_sync::sync::{
     DEFAULT_UPSTREAM_REPO, FilterVersion, GitSync, PullMode, RustcPullError,
@@ -97,6 +97,8 @@ fn main() -> anyhow::Result<()> {
                 subtree_filter: None,
                 filter_version: FilterVersion::latest(),
                 pull_mode: PullMode::default(),
+                pull_pr: PullRequestConfig::default(),
+                push_pr: PullRequestConfig::default(),
             };
             config
                 .write(Path::new(DEFAULT_CONFIG_PATH))
@@ -128,10 +130,19 @@ fn main() -> anyhow::Result<()> {
             let sync = GitSync::new(ctx.clone(), josh, shared.verbose);
             match sync.rustc_pull(upstream_repo, upstream_commit, allow_noop) {
                 Ok(result) => {
+                    let suffix = ctx
+                        .config
+                        .pull_pr
+                        .suffix
+                        .as_deref()
+                        .map(|s| format!("\n{s}"))
+                        .unwrap_or_default();
+                    let description = format!("{}{suffix}", result.merge_commit_message);
+
                     if !maybe_create_pull_gh_pr(
                         &ctx.config.full_repo_name(),
                         "Rustc pull update",
-                        &result.merge_commit_message,
+                        &description,
                     )? {
                         println!(
                             "Now push the current branch to {} (either a fork or the main repo) and create a PR",
@@ -176,12 +187,19 @@ fn main() -> anyhow::Result<()> {
             let title = format!("{} subtree update", ctx.config.repo);
             let head = get_current_head_sha(shared.verbose)?;
 
+            let suffix = ctx
+                .config
+                .push_pr
+                .suffix
+                .as_deref()
+                .map(|s| format!("\n\n{s}"))
+                .unwrap_or_default();
             let merge_msg = format!(
                 r#"Subtree update of `{repo}` to https://github.com/{full_repo}/commit/{head}.
 
 Created using https://github.com/rust-lang/josh-sync.
 
-r? @ghost"#,
+r? @ghost{suffix}"#,
                 repo = ctx.config.repo,
                 full_repo = ctx.config.full_repo_name(),
             );

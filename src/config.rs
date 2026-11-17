@@ -39,6 +39,12 @@ pub struct JoshConfig {
     /// repository.
     #[serde(default)]
     pub pull_mode: PullMode,
+    /// Configuration for automatically opened pull PRs.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub pull_pr: PullRequestConfig,
+    /// Configuration for automatically opened push PRs.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub push_pr: PullRequestConfig,
 }
 
 impl JoshConfig {
@@ -91,6 +97,10 @@ mod filter_version {
     }
 }
 
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
+}
+
 fn default_filter_version() -> FilterVersion {
     FilterVersion::Version1
 }
@@ -114,6 +124,14 @@ pub struct PostPullOperation {
     /// If the git state has changed after `cmd`, add all changes to the index (`git add -u`)
     /// and create a commit with the following commit message.
     pub commit_message: String,
+}
+
+/// Configuration for automatically opened pull requests.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default, PartialEq)]
+pub struct PullRequestConfig {
+    /// Text added to the end of the pull request body.
+    /// Can be used e.g. to add labels via triagebot (`@rustbot label +foo`).
+    pub suffix: Option<String>,
 }
 
 fn default_org() -> String {
