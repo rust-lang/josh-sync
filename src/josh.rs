@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 const JOSH_PORT: u16 = 42042;
+const JOSH_STARTUP_TIMEOUT: Duration = Duration::from_secs(2);
 /// Version of `josh-proxy` that should be downloaded for the user.
 const JOSH_VERSION: &str = "r26.08.28";
 
@@ -20,6 +21,15 @@ impl JoshProxy {
     }
 
     pub fn start(&self, config: &JoshConfig) -> anyhow::Result<RunningJoshProxy> {
+        self.start_with_timeout(config, JOSH_PORT, JOSH_STARTUP_TIMEOUT)
+    }
+
+    fn start_with_timeout(
+        &self,
+        config: &JoshConfig,
+        port: u16,
+        timeout: Duration,
+    ) -> anyhow::Result<RunningJoshProxy> {
         // Determine cache directory.
         let user_dirs =
             directories::ProjectDirs::from("org", &config.full_repo_name(), "rustc-josh")
@@ -32,7 +42,7 @@ impl JoshProxy {
             .arg(local_dir)
             .args([
                 "--remote=https://github.com",
-                &format!("--port={JOSH_PORT}"),
+                &format!("--port={port}"),
                 "--no-background",
             ])
             .stdout(Stdio::null())
@@ -41,27 +51,30 @@ impl JoshProxy {
             .context("failed to start josh-proxy, make sure it is installed")?;
         let josh_guard = RunningJoshProxy {
             process: josh,
-            port: JOSH_PORT,
+            port,
         };
 
-        // Wait until the port is open. We try every 10ms until 2s passed.
-        for _ in 0..200 {
-            // This will generally fail immediately when the port is still closed.
-            let addr = SocketAddr::from(([127, 0, 0, 1], JOSH_PORT));
-            let josh_ready = TcpStream::connect_timeout(&addr, Duration::from_millis(1));
-
-            if josh_ready.is_ok() {
-                println!("josh up and running");
-                return Ok(josh_guard);
-            }
-
-            // Not ready yet.
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        // Avoid leaving behind a stale process.
-        drop(josh_guard);
-        panic!("Even after waiting for 2s, josh-proxy is still not available.");
+        wait_for_proxy(port, timeout)?;
+        println!("josh up and running");
+        Ok(josh_guard)
     }
+}
+
+fn wait_for_proxy(port: u16, timeout: Duration) -> anyhow::Result<()> {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        // This will generally fail immediately when the port is still closed.
+        let addr = SocketAddr::from(([127, 0, 0, 1], port));
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(1)).is_ok() {
+            return Ok(());
+        }
+
+        // Not ready yet.
+        std::thread::sleep(Duration::from_millis(10).min(timeout.saturating_sub(start.elapsed())));
+    }
+    Err(anyhow::anyhow!(
+        "josh-proxy did not become available on port {port} within {timeout:?}"
+    ))
 }
 
 pub struct JoshFilter {
@@ -207,5 +220,40 @@ impl Drop for RunningJoshProxy {
             break anything."
         );
         self.process.kill().expect("failed to SIGKILL josh-proxy");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn startup_timeout_returns_error() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let error = wait_for_proxy(port, Duration::from_millis(20)).unwrap_err();
+        assert!(error.to_string().contains("did not become available"));
+    }
+
+    #[test]
+    fn dropping_running_proxy_stops_child_process() {
+        let process = Command::new("sleep").arg("30").spawn().unwrap();
+        let pid = process.id();
+        assert!(process_is_running(pid));
+
+        drop(RunningJoshProxy { process, port: 0 });
+
+        assert!(!process_is_running(pid));
+    }
+
+    fn process_is_running(pid: u32) -> bool {
+        Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .output()
+            .unwrap()
+            .status
+            .success()
     }
 }
