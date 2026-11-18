@@ -197,9 +197,7 @@ fn main() -> anyhow::Result<()> {
             let merge_msg = format!(
                 r#"Subtree update of `{repo}` to https://github.com/{full_repo}/commit/{head}.
 
-Created using https://github.com/rust-lang/josh-sync.
-
-r? @ghost{suffix}"#,
+Created using https://github.com/rust-lang/josh-sync.{suffix}"#,
                 repo = ctx.config.repo,
                 full_repo = ctx.config.full_repo_name(),
             );
