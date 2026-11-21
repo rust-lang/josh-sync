@@ -46,6 +46,8 @@ on:
         description: 'Zulip API token for authentication'
         required: false
 
+permissions: {}
+
 jobs:
   perform-pull:
     runs-on: ubuntu-latest
